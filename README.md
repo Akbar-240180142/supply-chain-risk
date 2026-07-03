@@ -1,59 +1,56 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🌍 Global Supply Chain Risk Intelligence
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A comprehensive full-stack web application for monitoring and analyzing global supply chain risks using real-time data from multiple international APIs.
 
-## About Laravel
+## ✨ Features
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+### 📊 Dashboard Analytics
+- **Global Risk Map**: Interactive world map showing risk levels for 20+ countries
+- **Risk Score Charts**: Visual representation of country risk scores using Chart.js
+- **Currency Exchange Rates**: Real-time currency tracking against USD
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### 🗺️ Geospatial Visualization
+- **Port Location Dashboard**: Interactive map of 15 major global ports
+- **Country Risk Markers**: Color-coded markers (Green/Yellow/Red) based on risk levels
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### 🤖 AI & Data Science
+- **Sentiment Analysis**: Lexicon-based analysis of news articles (Positive/Negative/Neutral)
+- **Risk Scoring Engine**: Weighted algorithm combining weather, economic, news, and currency data
+- **News Intelligence**: Real-time news aggregation from Reuters, BBC, Bloomberg
 
-## Learning Laravel
+### 🔍 Decision Support
+- **Country Comparison**: Side-by-side comparison of any two countries with radar charts
+- **Favorite Monitoring List**: Save and monitor specific countries of interest
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### 📰 News Categories
+- **Logistics**: Shipping costs, port congestion, infrastructure
+- **Trade**: Tariffs, trade agreements, economic tensions
+- **Shipping**: Container shortages, route disruptions, carrier profits
+- **Economy**: GDP growth, inflation, interest rates, sanctions
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## ️ Tech Stack
 
-## Laravel Sponsors
+- **Backend**: Laravel 12 (PHP 8.2)
+- **Frontend**: Bootstrap 5, Chart.js, Leaflet.js
+- **Database**: MySQL
+- **APIs Integrated**:
+  - Open-Meteo (Weather)
+  - World Bank (Economic Data)
+  - ExchangeRate API (Currency)
+  - GNews API (News)
+  - REST Countries (Country Data)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+##  Installation
 
-### Premium Partners
+### Prerequisites
+- PHP 8.2+
+- Composer
+- MySQL 8.0+
+- Node.js (optional)
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Setup Steps
 
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+1. **Clone the repository**
+```bash
+git clone https://github.com/yourusername/supply-chain-risk.git
+cd supply-chain-risk
