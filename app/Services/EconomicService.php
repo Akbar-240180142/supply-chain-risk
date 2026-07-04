@@ -2,69 +2,69 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Http;
 use App\Models\Country;
 use App\Models\EconomicIndicator;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class EconomicService
 {
     public function fetchAndSync()
     {
-        Log::info('Fetching economic data from World Bank API...');
-        $countries = Country::whereNotNull('cca3')->get();
+        $countries = Country::all();
         $count = 0;
-        $failed = 0;
+        $failedCountries = [];
 
         foreach ($countries as $country) {
+            if (!$country->cca2) continue;
+
             try {
-                // Fetch GDP
-                $gdpResponse = Http::timeout(60)->retry(2, 1000)->get("https://api.worldbank.org/v2/country/{$country->cca3}/indicator/NY.GDP.MKTP.CD", [
-                    'format' => 'json',
-                    'per_page' => 1,
-                    'date' => '2022:2023'
-                ]);
+                // Fetch GDP & Inflation dari World Bank API
+                $gdpUrl = "https://api.worldbank.org/v2/country/{$country->cca2}/indicator/NY.GDP.MKTP.CD?format=json&date=2019:2024&per_page=100";
+                $inflationUrl = "https://api.worldbank.org/v2/country/{$country->cca2}/indicator/FP.CPI.TOTL.ZG?format=json&date=2019:2024&per_page=100";
 
-                // Fetch Inflation
-                $infResponse = Http::timeout(60)->retry(2, 1000)->get("https://api.worldbank.org/v2/country/{$country->cca3}/indicator/FP.CPI.TOTL.ZG", [
-                    'format' => 'json',
-                    'per_page' => 1,
-                    'date' => '2022:2023'
-                ]);
+                $gdpResponse = Http::timeout(60)->get($gdpUrl);
+                $inflationResponse = Http::timeout(60)->get($inflationUrl);
 
-                $gdp = null;
-                $inflation = null;
-                $year = 2023;
+                if ($gdpResponse->successful() && $inflationResponse->successful()) {
+                    $gdpData = $gdpResponse->json()[1] ?? [];
+                    $inflationData = $inflationResponse->json()[1] ?? [];
 
-                if ($gdpResponse->successful() && isset($gdpResponse->json()[1][0])) {
-                    $gdp = $gdpResponse->json()[1][0]['value'];
-                    $year = $gdpResponse->json()[1][0]['date'];
-                }
+                    if (is_array($gdpData) && count($gdpData) > 0) {
+                        foreach ($gdpData as $item) {
+                            if ($item['value'] === null) continue;
 
-                if ($infResponse->successful() && isset($infResponse->json()[1][0])) {
-                    $inflation = $infResponse->json()[1][0]['value'];
-                }
+                            $year = $item['date'];
+                            $gdp = floatval($item['value']);
+                            
+                            $inflationItem = collect($inflationData)->firstWhere('date', $year);
+                            $inflation = $inflationItem && $inflationItem['value'] !== null 
+                                         ? floatval($inflationItem['value']) 
+                                         : 0.00;
 
-                if ($gdp !== null || $inflation !== null) {
-                    EconomicIndicator::updateOrCreate(
-                        ['country_id' => $country->id, 'year' => $year],
-                        [
-                            'gdp' => $gdp,
-                            'inflation_rate' => $inflation,
-                        ]
-                    );
-                    $count++;
+                            EconomicIndicator::updateOrCreate(
+                                ['country_id' => $country->id, 'year' => $year],
+                                ['gdp' => $gdp, 'inflation_rate' => $inflation]
+                            );
+                            $count++;
+                        }
+                    } else {
+                        $failedCountries[] = $country->name . " (no data)";
+                    }
                 } else {
-                    $failed++;
+                    $failedCountries[] = $country->name . " (API error)";
                 }
             } catch (\Exception $e) {
-                Log::error("Exception fetching economic data for {$country->name}: " . $e->getMessage());
-                $failed++;
+                Log::error("Error fetching {$country->name}: " . $e->getMessage());
+                $failedCountries[] = $country->name . " (exception)";
                 continue;
             }
         }
 
-        Log::info("Successfully synced economic data for {$count} countries. Failed: {$failed}");
+        if (count($failedCountries) > 0) {
+            Log::warning("Failed countries: " . implode(', ', $failedCountries));
+        }
+
         return $count;
     }
 }

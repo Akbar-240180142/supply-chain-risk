@@ -6,6 +6,7 @@ use App\Models\Country;
 use App\Models\RiskScore;
 use App\Models\CurrencyRate;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -49,4 +50,28 @@ class DashboardController extends Controller
             'map_data' => $mapData
         ]);
     }
+public function showCountry($id)
+{
+    $country = Country::with([
+        'riskScores' => function($q) {
+            $q->orderBy('record_date', 'asc');
+        },
+        'economicIndicators' => function($q) {
+            $q->latest('year')->limit(10);
+        },
+        'news' => function($q) {
+            $q->latest('published_at')->limit(10);
+        }
+
+    ])->findOrFail($id);
+
+        // Ambil exchange rate terbaru dari database (USD to Local Currency)
+    $currentExchangeRate = DB::table('currency_rates')
+        ->where('base_currency', 'USD')
+        ->where('target_currency', $country->currency_code)
+        ->latest('record_date') // Ambil yang tanggalnya paling baru
+        ->value('rate');
+
+    return view('country-detail', compact('country', 'currentExchangeRate'));
+}
 }

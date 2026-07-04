@@ -7,6 +7,9 @@ use App\Http\Controllers\DashboardController;
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/api/dashboard-data', [DashboardController::class, 'getDashboardData'])->name('api.dashboard');
 
+// ============ COUNTRY DETAIL ============
+Route::get('/country/{id}', [DashboardController::class, 'showCountry'])->name('country.detail');
+
 // ============ COMPARISON ============
 Route::get('/comparison', function() {
     return view('comparison');
@@ -22,14 +25,34 @@ Route::get('/api/ports', function() {
 
 // ============ NEWS ============
 Route::get('/news', function() {
-    return view('news');
-})->name('news');
-Route::get('/api/news', function() {
-    return \App\Models\NewsCache::with('country')
+    $newsFromDb = \App\Models\NewsCache::with('country')
         ->latest('published_at')
+        ->limit(50)
         ->get();
+    
+    if ($newsFromDb->count() === 0) {
+        $newsService = app(\App\Services\NewsService::class);
+        $newsService->fetchAndSync();
+        
+        $newsFromDb = \App\Models\NewsCache::with('country')
+            ->latest('published_at')
+            ->limit(50)
+            ->get();
+    }
+    
+    return view('news', ['news' => $newsFromDb]);
+})->name('news');
+
+Route::get('/api/news', function() {
+    $newsFromDb = \App\Models\NewsCache::with('country')
+        ->latest('published_at')
+        ->limit(50)
+        ->get();
+    
+    return response()->json($newsFromDb);
 })->name('api.news');
-// Watchlist routes
+
+// ============ WATCHLIST ============
 Route::get('/watchlist', function() {
     $userId = 1;
     $watchlist = \App\Models\Watchlist::where('user_id', $userId)
@@ -43,7 +66,6 @@ Route::get('/watchlist', function() {
     return view('watchlist', compact('watchlist'));
 })->name('watchlist');
 
-// Remove from watchlist
 Route::delete('/watchlist/{countryId}', function($countryId) {
     $userId = 1;
     
@@ -54,7 +76,6 @@ Route::delete('/watchlist/{countryId}', function($countryId) {
     return redirect()->route('watchlist')->with('success', 'Country removed from watchlist');
 })->name('watchlist.remove');
 
-// API untuk dashboard
 Route::get('/api/watchlist', function() {
     $userId = 1;
     return \App\Models\Watchlist::where('user_id', $userId)
@@ -84,46 +105,4 @@ Route::post('/api/watchlist/toggle', function() {
         ]);
         return response()->json(['status' => 'added']);
     }
-    // News Intelligence - pakai data REAL dari API
-Route::get('/news', function() {
-    // Opsi 1: Ambil dari database (cache)
-    $newsFromDb = \App\Models\NewsCache::with('country')
-        ->latest('published_at')
-        ->limit(50)
-        ->get();
-    
-    // Kalau database kosong, fetch dari API
-    if ($newsFromDb->count() === 0) {
-        $newsService = app(\App\Services\NewsService::class);
-        $newsService->fetchAndSync();
-        
-        // Reload dari database
-        $newsFromDb = \App\Models\NewsCache::with('country')
-            ->latest('published_at')
-            ->limit(50)
-            ->get();
-    }
-    
-    return view('news', ['news' => $newsFromDb]);
-})->name('news');
-
-// API endpoint untuk news - bisa real-time atau dari cache
-Route::get('/api/news', function() {
-    $newsFromDb = \App\Models\NewsCache::with('country')
-        ->latest('published_at')
-        ->limit(50)
-        ->get();
-    
-    // Kalau mau REAL-TIME (setiap kali akses fetch dari API):
-    // Uncomment baris di bawah ini
-    /*
-    if ($newsFromDb->count() === 0 || $newsFromDb->first()->created_at->diffInHours() > 1) {
-        $newsService = app(\App\Services\NewsService::class);
-        $newsService->fetchAndSync();
-        $newsFromDb = \App\Models\NewsCache::with('country')->latest('published_at')->limit(50)->get();
-    }
-    */
-    
-    return response()->json($newsFromDb);
-})->name('api.news');
 });

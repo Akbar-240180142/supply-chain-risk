@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const row = `
                 <tr id="row-${country.id}">
-                    <td>${country.name}</td>
+                    <td><a href="/country/${country.id}" class="text-decoration-none fw-bold text-primary">${country.name}</a></td>
                     <td>${risk.total_risk_score}</td>
                     <td><span class="badge ${badgeClass}">${risk.risk_level}</span></td>
                     <td>

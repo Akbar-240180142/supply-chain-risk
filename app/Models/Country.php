@@ -11,10 +11,32 @@ class Country extends Model
         'currency_code', 'latitude', 'longitude'
     ];
 
-    public function ports() { return $this->hasMany(Port::class); }
-    public function economicIndicators() { return $this->hasMany(EconomicIndicator::class); }
-    public function riskScores() { return $this->hasMany(RiskScore::class); }
-    public function news() { return $this->hasMany(NewsCache::class); }
-    public function weather() { return $this->hasMany(WeatherCache::class); }
-    public function watchlists() { return $this->hasMany(Watchlist::class); }
+    // Relasi ke tabel lain
+    public function ports() { 
+        return $this->hasMany(Port::class); 
+    }
+
+    public function economicIndicators() { 
+        return $this->hasMany(EconomicIndicator::class); 
+    }
+
+    public function riskScores() { 
+        return $this->hasMany(RiskScore::class); 
+    }
+
+    public function news() { 
+        return $this->hasMany(NewsCache::class); 
+    }
+
+    public function weather() { 
+        return $this->hasMany(WeatherCache::class); 
+    }
+
+    public function watchlists() { 
+        return $this->hasMany(Watchlist::class); 
+    }
+    
+    public function currencyRates() { 
+    return $this->hasMany(CurrencyRate::class); 
+}
 }
