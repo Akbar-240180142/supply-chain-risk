@@ -152,22 +152,24 @@
                 <h5 class="card-title mb-3">💰 Economic Indicators</h5>
                 @if($country->economicIndicators->count() > 0)
                     <table class="table table-sm mb-0">
-                        <thead>
-                            <tr>
-                                <th>Year</th>
-                                <th>GDP</th>
-                                <th>Inflation</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($country->economicIndicators as $econ)
-                                <tr>
-                                    <td>{{ $econ->year }}</td>
-                                    <td>${{ number_format($econ->gdp / 1000000000, 1) }}B</td>
-                                    <td>{{ $econ->inflation_rate }}%</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
+                       <thead>
+    <tr>
+        <th>Year</th>
+        <th>GDP</th>
+        <th>Inflation</th>
+        <th>Population</th>
+    </tr>
+</thead>
+<tbody>
+    @foreach($country->economicIndicators as $econ)
+        <tr>
+            <td>{{ $econ->year }}</td>
+            <td>${{ number_format($econ->gdp / 1000000000, 1) }}B</td>
+            <td>{{ $econ->inflation_rate }}%</td>
+            <td>{{ number_format($econ->population ?? 0) }}</td>
+        </tr>
+    @endforeach
+</tbody>
                     </table>
                 @else
                     <p class="text-muted">No economic data available.</p>

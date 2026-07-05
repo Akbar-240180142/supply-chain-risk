@@ -11,6 +11,7 @@
         body { background-color: #f8f9fa; }
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
         #map { height: 500px; width: 100%; border-radius: 8px; }
+        #weatherMap { height: 500px; width: 100%; border-radius: 8px; }
         .risk-low { color: #198754; font-weight: bold; }
         .risk-medium { color: #ffc107; font-weight: bold; }
         .risk-high { color: #fd7e14; font-weight: bold; }
@@ -26,6 +27,20 @@
         }
         .btn-watch:hover {
             transform: scale(1.1);
+        }
+        .weather-marker {
+            transition: transform 0.2s;
+        }
+        .weather-marker:hover {
+            transform: scale(1.2);
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .leaflet-popup-content {
+            margin: 15px;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -50,6 +65,43 @@
                 <h5 class="card-title">🗺️ Global Risk Map</h5>
                 <div id="map"></div>
             </div>
+            
+            <!-- Global Weather Monitoring -->
+            <div class="card p-4 mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">🌦️ Global Weather Monitoring</h5>
+                    <div>
+                        <span class="badge bg-primary me-2">☁️ Normal</span>
+                        <span class="badge bg-info me-2">🌧️ Hujan</span>
+                        <span class="badge bg-warning me-2">⛈️ Badai</span>
+                        <span class="badge bg-danger me-2">💨 Angin Kencang</span>
+                    </div>
+                </div>
+                <div id="weatherMap"></div>
+            </div>
+
+            <!-- Weather Details Table -->
+            <div class="card p-4 mb-4">
+                <h5 class="card-title mb-3">📊 Weather Details by Country</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="weatherTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Country</th>
+                                <th>Temperature</th>
+                                <th>Condition</th>
+                                <th>Rainfall</th>
+                                <th>Wind Speed</th>
+                                <th>Risk Level</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="text-center">Loading weather data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="card p-3">
                 <h5 class="card-title">📊 Country Risk Scores</h5>
                 <canvas id="riskChart"></canvas>
@@ -90,34 +142,186 @@
 <script>
 let watchlistIds = [];
 let allCountriesData = [];
+let weatherMap;
+let weatherMarkers = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Init map
+    // Init risk map
     const map = L.map('map').setView([20, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Load watchlist DAN dashboard data bersamaan
+    // Init weather map
+    weatherMap = L.map('weatherMap').setView([20, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(weatherMap);
+
+    // Load watchlist DAN dashboard data
     Promise.all([
         fetch('/api/watchlist').then(r => r.json()),
         fetch('/api/dashboard-data').then(r => r.json())
     ])
     .then(([watchlistData, dashboardData]) => {
-        // Simpan watchlist IDs
         watchlistIds = watchlistData.map(item => item.country_id);
-        console.log('✅ Watchlist loaded:', watchlistIds);
-        
-        // Simpan semua data negara
         allCountriesData = dashboardData.countries;
         
-        // Render semua
         updateTable(allCountriesData);
         initChart(dashboardData.chart_labels, dashboardData.chart_risk);
         initMapMarkers(dashboardData.map_data);
         initCurrencyChart(allCountriesData);
+        
+        // Load weather data
+        loadWeatherData(dashboardData.map_data);
     })
     .catch(error => console.error('Error:', error));
+
+    // Fungsi Weather
+    function loadWeatherData(mapData) {
+        const weatherPromises = mapData.map(async (country) => {
+            try {
+                const weatherResponse = await fetch(
+                    `https://api.open-meteo.com/v1/forecast?latitude=${country.lat}&longitude=${country.lng}&current=temperature_2m,weather_code,precipitation,wind_speed_10m&daily=precipitation_sum&timezone=auto`
+                );
+                const weatherData = await weatherResponse.json();
+                
+                return {
+                    name: country.name,
+                    lat: country.lat,
+                    lng: country.lng,
+                    risk: country.risk,
+                    riskLevel: country.level,
+                    temperature: weatherData.current.temperature_2m,
+                    weatherCode: weatherData.current.weather_code,
+                    precipitation: weatherData.current.precipitation,
+                    windSpeed: weatherData.current.wind_speed_10m,
+                    dailyRain: weatherData.daily.precipitation_sum[0] || 0
+                };
+            } catch (error) {
+                console.error(`Error fetching weather for ${country.name}:`, error);
+                return null;
+            }
+        });
+        
+        Promise.all(weatherPromises).then(weatherData => {
+            const validWeatherData = weatherData.filter(w => w !== null);
+            displayWeatherOnMap(validWeatherData);
+            updateWeatherTable(validWeatherData);
+        });
+    }
+
+    function getWeatherInfo(code) {
+        const weatherCodes = {
+            0: { condition: 'Clear Sky', icon: '☀️', color: 'success', risk: 'Low' },
+            1: { condition: 'Mainly Clear', icon: '🌤️', color: 'success', risk: 'Low' },
+            2: { condition: 'Partly Cloudy', icon: '⛅', color: 'primary', risk: 'Low' },
+            3: { condition: 'Overcast', icon: '☁️', color: 'primary', risk: 'Low' },
+            45: { condition: 'Fog', icon: '🌫️', color: 'warning', risk: 'Medium' },
+            48: { condition: 'Rime Fog', icon: '🌫️', color: 'warning', risk: 'Medium' },
+            51: { condition: 'Light Drizzle', icon: '🌦️', color: 'info', risk: 'Low' },
+            53: { condition: 'Drizzle', icon: '🌦️', color: 'info', risk: 'Low' },
+            55: { condition: 'Dense Drizzle', icon: '🌧️', color: 'info', risk: 'Medium' },
+            61: { condition: 'Slight Rain', icon: '🌧️', color: 'info', risk: 'Medium' },
+            63: { condition: 'Moderate Rain', icon: '🌧️', color: 'warning', risk: 'Medium' },
+            65: { condition: 'Heavy Rain', icon: '🌧️', color: 'warning', risk: 'High' },
+            71: { condition: 'Slight Snow', icon: '🌨️', color: 'info', risk: 'Medium' },
+            73: { condition: 'Snow', icon: '🌨️', color: 'warning', risk: 'Medium' },
+            75: { condition: 'Heavy Snow', icon: '❄️', color: 'danger', risk: 'High' },
+            95: { condition: 'Thunderstorm', icon: '⛈️', color: 'danger', risk: 'High' },
+            96: { condition: 'Thunderstorm + Hail', icon: '⛈️', color: 'danger', risk: 'High' }
+        };
+        
+        return weatherCodes[code] || { condition: 'Unknown', icon: '❓', color: 'secondary', risk: 'Low' };
+    }
+
+    function getMarkerColor(color) {
+        const colors = {
+            'blue': '#0d6efd',
+            'red': '#dc3545',
+            'orange': '#ffc107',
+            'cyan': '#0dcaf0',
+            'green': '#198754'
+        };
+        return colors[color] || '#6c757d';
+    }
+
+    function displayWeatherOnMap(weatherData) {
+        weatherMarkers.forEach(marker => weatherMap.removeLayer(marker));
+        weatherMarkers = [];
+        
+        weatherData.forEach(country => {
+            const weatherInfo = getWeatherInfo(country.weatherCode);
+            
+            let markerColor = 'blue';
+            if (weatherInfo.risk === 'High') {
+                markerColor = 'red';
+            } else if (weatherInfo.risk === 'Medium') {
+                markerColor = 'orange';
+            } else if (country.precipitation > 0 || country.dailyRain > 2) {
+                markerColor = 'cyan';
+            }
+            
+            const iconHtml = `
+                <div style="
+                    background-color: ${getMarkerColor(markerColor)};
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 50%;
+                    border: 3px solid white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 16px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                ">${weatherInfo.icon}</div>
+            `;
+            
+            const customIcon = L.divIcon({
+                html: iconHtml,
+                className: 'weather-marker',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            
+            const marker = L.marker([country.lat, country.lng], { icon: customIcon })
+                .addTo(weatherMap)
+                .bindPopup(`
+                    <div style="min-width: 200px;">
+                        <h6 style="margin: 0 0 10px 0; font-weight: bold;">${country.name}</h6>
+                        <div style="margin-bottom: 5px;"><strong>Temperature:</strong> ${Math.round(country.temperature)}°C</div>
+                        <div style="margin-bottom: 5px;"><strong>Condition:</strong> ${weatherInfo.icon} ${weatherInfo.condition}</div>
+                        <div style="margin-bottom: 5px;"><strong>Rainfall:</strong> ${country.precipitation} mm</div>
+                        <div style="margin-bottom: 5px;"><strong>Wind Speed:</strong> ${country.windSpeed} km/h</div>
+                        <div style="margin-bottom: 5px;"><strong>Daily Rain:</strong> ${country.dailyRain.toFixed(1)} mm</div>
+                        <div><strong>Risk Level:</strong> <span class="badge bg-${weatherInfo.color}">${weatherInfo.risk}</span></div>
+                    </div>
+                `);
+            
+            weatherMarkers.push(marker);
+        });
+    }
+
+    function updateWeatherTable(weatherData) {
+        const tbody = document.querySelector('#weatherTable tbody');
+        tbody.innerHTML = '';
+        
+        weatherData.forEach(country => {
+            const weatherInfo = getWeatherInfo(country.weatherCode);
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${country.name}</strong></td>
+                <td>${Math.round(country.temperature)}°C</td>
+                <td>${weatherInfo.icon} ${weatherInfo.condition}</td>
+                <td>${country.precipitation} mm (Daily: ${country.dailyRain.toFixed(1)} mm)</td>
+                <td>${country.windSpeed} km/h</td>
+                <td><span class="badge bg-${weatherInfo.color}">${weatherInfo.risk} Risk</span></td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
 
     // Fungsi Update Tabel
     window.updateTable = function(countries) {
@@ -131,7 +335,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if(risk.risk_level === 'High') badgeClass = 'bg-danger';
             if(risk.risk_level === 'Critical') badgeClass = 'bg-dark';
 
-            // Cek apakah sudah di watchlist
             const isInWatchlist = watchlistIds.includes(country.id);
             
             const row = `
@@ -157,8 +360,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const button = document.getElementById(`btn-watch-${countryId}`);
         
-        console.log('Toggling country:', countryId);
-        
         fetch('/api/watchlist/toggle', {
             method: 'POST',
             headers: {
@@ -170,20 +371,14 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            console.log('Response:', data);
-            
             if (data.status === 'added') {
-                // Tambah ke array
                 watchlistIds.push(countryId);
-                // Update tombol
                 button.classList.remove('btn-outline-warning');
                 button.classList.add('btn-warning', 'active');
                 button.innerHTML = '⭐';
                 alert('✅ Added to watchlist!');
             } else if (data.status === 'removed') {
-                // Hapus dari array
                 watchlistIds = watchlistIds.filter(id => id !== countryId);
-                // Update tombol
                 button.classList.remove('btn-warning', 'active');
                 button.classList.add('btn-outline-warning');
                 button.innerHTML = '☆';
@@ -196,7 +391,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     };
 
-    // Fungsi Chart dan Map (sama seperti sebelumnya)
+    // Fungsi Chart dan Map
     function initChart(labels, riskData) {
         const ctx = document.getElementById('riskChart').getContext('2d');
         new Chart(ctx, {

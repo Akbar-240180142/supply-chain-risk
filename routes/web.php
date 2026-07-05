@@ -12,17 +12,14 @@ Route::get('/api/dashboard-data', [DashboardController::class, 'getDashboardData
 Route::get('/country/{id}', [DashboardController::class, 'showCountry'])->name('country.detail');
 
 // ============ COMPARISON ============
-Route::get('/comparison', function() {
-    return view('comparison');
-})->name('comparison');
+Route::get('/comparison', [DashboardController::class, 'comparison'])->name('comparison');
+Route::post('/api/compare', [DashboardController::class, 'compareCountries'])->name('api.compare');
+
 
 // ============ PORTS ============
-Route::get('/ports', function() {
-    return view('ports');
-})->name('ports');
-Route::get('/api/ports', function() {
-    return \App\Models\Port::with('country')->get();
-})->name('api.ports');
+
+Route::get('/ports', [DashboardController::class, 'ports'])->name('ports');
+Route::get('/api/ports', [DashboardController::class, 'getPortsData'])->name('api.ports');
 
 // ============ NEWS ============
 Route::get('/news', function() {
@@ -120,6 +117,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/news/{id}/update', [AdminController::class, 'updateNews'])->name('news.update');
     Route::get('/news/{id}/delete', [AdminController::class, 'deleteNews'])->name('news.delete');
     
+ 
+
     // Port Management
     Route::get('/ports', [AdminController::class, 'ports'])->name('ports');
     Route::get('/ports/create', [AdminController::class, 'createPort'])->name('ports.create');
