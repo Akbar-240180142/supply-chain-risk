@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\AdminController;
 
 // ============ DASHBOARD ============
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -105,4 +106,25 @@ Route::post('/api/watchlist/toggle', function() {
         ]);
         return response()->json(['status' => 'added']);
     }
+});
+
+// ============ ADMIN DASHBOARD ROUTES ============
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [AdminController::class, 'index'])->name('index');
+    
+    // News Management
+    Route::get('/news', [AdminController::class, 'news'])->name('news');
+    Route::get('/news/create', [AdminController::class, 'createNews'])->name('news.create');
+    Route::post('/news/store', [AdminController::class, 'storeNews'])->name('news.store');
+    Route::get('/news/{id}/edit', [AdminController::class, 'editNews'])->name('news.edit');
+    Route::post('/news/{id}/update', [AdminController::class, 'updateNews'])->name('news.update');
+    Route::get('/news/{id}/delete', [AdminController::class, 'deleteNews'])->name('news.delete');
+    
+    // Port Management
+    Route::get('/ports', [AdminController::class, 'ports'])->name('ports');
+    Route::get('/ports/create', [AdminController::class, 'createPort'])->name('ports.create');
+    Route::post('/ports/store', [AdminController::class, 'storePort'])->name('ports.store');
+    Route::get('/ports/{id}/edit', [AdminController::class, 'editPort'])->name('ports.edit');
+    Route::post('/ports/{id}/update', [AdminController::class, 'updatePort'])->name('ports.update');
+    Route::get('/ports/{id}/delete', [AdminController::class, 'deletePort'])->name('ports.delete');
 });
