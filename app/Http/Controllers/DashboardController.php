@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Country;
 use App\Models\RiskScore;
 use App\Models\CurrencyRate;
+use App\Models\Port;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Models\Port;
 
 class DashboardController extends Controller
 {
@@ -154,21 +154,13 @@ class DashboardController extends Controller
             $ports = DB::table('ports')->get();
             
             $portsData = $ports->map(function($port) {
-                // Gunakan port_name jika name kosong
                 $portName = $port->port_name ?? $port->name ?? 'Unknown Port';
-                
-                // Generate code dari port_name jika code kosong
                 $portCode = $port->code;
                 if (empty($portCode)) {
-                    // Ambil huruf pertama dari setiap kata
                     $words = explode(' ', $portName);
                     $portCode = strtoupper(substr(implode('', array_map(function($w) { return substr($w, 0, 1); }, $words)), 0, 3));
                 }
-                
-                // Gunakan country_name jika country relation kosong
                 $countryName = $port->country_name ?? 'Unknown';
-                
-                // Tentukan status dari is_active atau status
                 $status = 'Active';
                 if (isset($port->is_active) && !$port->is_active) {
                     $status = 'Inactive';
@@ -197,5 +189,46 @@ class DashboardController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    // ============ REST API ENDPOINTS ============
+    
+    public function apiCountries()
+    {
+        $countries = Country::select('id', 'name', 'capital', 'region', 'currency_code', 'latitude', 'longitude')->get();
+        return response()->json($countries);
+    }
+
+    public function apiRisk()
+    {
+        $risk = RiskScore::with('country:id,name')->latest('record_date')->get();
+        return response()->json($risk);
+    }
+
+    public function apiCurrency()
+    {
+        $currency = DB::table('currency_rates')
+            ->select('base_currency', 'target_currency', 'rate', 'record_date')
+            ->latest('record_date')
+            ->get();
+        return response()->json($currency);
+    }
+
+    public function getEconomicTrends()
+    {
+        $trends = DB::table('economic_indicators')
+            ->join('countries', 'economic_indicators.country_id', '=', 'countries.id')
+            ->select(
+                'countries.name as country_name',
+                'economic_indicators.year',
+                'economic_indicators.gdp',
+                'economic_indicators.inflation_rate'
+            )
+            ->where('economic_indicators.year', '>=', date('Y') - 5)
+            ->orderBy('countries.name')
+            ->orderBy('economic_indicators.year')
+            ->get();
+
+        return response()->json($trends);
     }
 }

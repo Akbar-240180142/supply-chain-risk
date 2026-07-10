@@ -146,4 +146,59 @@ class AdminController extends Controller
 
         return redirect()->route('admin.ports')->with('success', 'Port deleted successfully!');
     }
+        // ============ USER MANAGEMENT ============
+    
+    public function users()
+    {
+        $users = \App\Models\User::all();
+        return view('admin.users', compact('users'));
+    }
+
+    public function storeUser(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|min:6',
+            'role' => 'required|in:admin,user'
+        ]);
+
+        \App\Models\User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => bcrypt($request->password),
+            'role' => $request->role,
+        ]);
+
+        return redirect()->route('admin.users')->with('success', 'User berhasil ditambahkan!');
+    }
+
+    public function updateUser(Request $request, $id)
+    {
+        $user = \App\Models\User::findOrFail($id);
+        
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,' . $id,
+            'role' => 'required|in:admin,user'
+        ]);
+
+        $user->update([
+            'name' => $request->name,
+            'email' => $request->email,
+            'role' => $request->role,
+        ]);
+
+        if ($request->filled('password')) {
+            $user->update(['password' => bcrypt($request->password)]);
+        }
+
+        return redirect()->route('admin.users')->with('success', 'User berhasil diupdate!');
+    }
+
+    public function deleteUser($id)
+    {
+        \App\Models\User::findOrFail($id)->delete();
+        return redirect()->route('admin.users')->with('success', 'User berhasil dihapus!');
+    }
 }

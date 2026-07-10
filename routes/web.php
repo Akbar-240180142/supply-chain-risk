@@ -15,9 +15,7 @@ Route::get('/country/{id}', [DashboardController::class, 'showCountry'])->name('
 Route::get('/comparison', [DashboardController::class, 'comparison'])->name('comparison');
 Route::post('/api/compare', [DashboardController::class, 'compareCountries'])->name('api.compare');
 
-
 // ============ PORTS ============
-
 Route::get('/ports', [DashboardController::class, 'ports'])->name('ports');
 Route::get('/api/ports', [DashboardController::class, 'getPortsData'])->name('api.ports');
 
@@ -31,7 +29,6 @@ Route::get('/news', function() {
     if ($newsFromDb->count() === 0) {
         $newsService = app(\App\Services\NewsService::class);
         $newsService->fetchAndSync();
-        
         $newsFromDb = \App\Models\NewsCache::with('country')
             ->latest('published_at')
             ->limit(50)
@@ -46,7 +43,6 @@ Route::get('/api/news', function() {
         ->latest('published_at')
         ->limit(50)
         ->get();
-    
     return response()->json($newsFromDb);
 })->name('api.news');
 
@@ -60,17 +56,14 @@ Route::get('/watchlist', function() {
             }]);
         }])
         ->get();
-    
     return view('watchlist', compact('watchlist'));
 })->name('watchlist');
 
 Route::delete('/watchlist/{countryId}', function($countryId) {
     $userId = 1;
-    
     \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
         ->delete();
-    
     return redirect()->route('watchlist')->with('success', 'Country removed from watchlist');
 })->name('watchlist.remove');
 
@@ -88,11 +81,9 @@ Route::get('/api/watchlist', function() {
 Route::post('/api/watchlist/toggle', function() {
     $userId = 1;
     $countryId = request()->input('country_id');
-    
     $existing = \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
         ->first();
-    
     if ($existing) {
         $existing->delete();
         return response()->json(['status' => 'removed']);
@@ -103,6 +94,14 @@ Route::post('/api/watchlist/toggle', function() {
         ]);
         return response()->json(['status' => 'added']);
     }
+});
+
+// ============ REST API ENDPOINTS (WAJIB PDF) ============
+Route::prefix('api')->group(function () {
+    Route::get('/countries', [DashboardController::class, 'apiCountries']);
+    Route::get('/risk', [DashboardController::class, 'apiRisk']);
+    Route::get('/currency', [DashboardController::class, 'apiCurrency']);
+    Route::get('/economic-trends', [DashboardController::class, 'getEconomicTrends']);
 });
 
 // ============ ADMIN DASHBOARD ROUTES ============
@@ -117,8 +116,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/news/{id}/update', [AdminController::class, 'updateNews'])->name('news.update');
     Route::get('/news/{id}/delete', [AdminController::class, 'deleteNews'])->name('news.delete');
     
- 
-
     // Port Management
     Route::get('/ports', [AdminController::class, 'ports'])->name('ports');
     Route::get('/ports/create', [AdminController::class, 'createPort'])->name('ports.create');
@@ -126,4 +123,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/ports/{id}/edit', [AdminController::class, 'editPort'])->name('ports.edit');
     Route::post('/ports/{id}/update', [AdminController::class, 'updatePort'])->name('ports.update');
     Route::get('/ports/{id}/delete', [AdminController::class, 'deletePort'])->name('ports.delete');
+    
+    // User Management
+    Route::get('/users', [AdminController::class, 'users'])->name('users');
+    Route::post('/users/store', [AdminController::class, 'storeUser'])->name('users.store');
+    Route::post('/users/{id}/update', [AdminController::class, 'updateUser'])->name('users.update');
+    Route::get('/users/{id}/delete', [AdminController::class, 'deleteUser'])->name('users.delete');
 });
+
+// ============ MODERN DASHBOARD ============
+Route::get('/modern', [DashboardController::class, 'index'])->name('dashboard.modern');
