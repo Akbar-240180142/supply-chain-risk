@@ -9,48 +9,111 @@ use Illuminate\Support\Facades\Log;
 
 class WeatherService
 {
+    /**
+     * Fetch weather for all tracked countries in a single batched API call.
+     */
     public function fetchAndSync()
     {
-        Log::info('Fetching weather data from Open-Meteo API...');
-        $countries = Country::whereNotNull('latitude')->get();
-        $count = 0;
-        $failed = 0;
+        Log::info('WeatherService: Fetching weather data from Open-Meteo API (batched)...');
+        
+        $countries = Country::whereNotNull('latitude')->whereNotNull('longitude')->get();
+        if ($countries->isEmpty()) {
+            Log::info('WeatherService: No countries with coordinates found.');
+            return 0;
+        }
 
-        foreach ($countries as $country) {
-            try {
-                $response = Http::timeout(45)->retry(2, 1500)->get('https://api.open-meteo.com/v1/forecast', [
-                    'latitude' => $country->latitude,
-                    'longitude' => $country->longitude,
-                    'current' => 'temperature_2m,wind_speed_10m,rain,weather_code',
-                    'timezone' => 'auto'
-                ]);
+        // Combine all coordinates into comma-separated strings for batch request
+        $latitudes = $countries->pluck('latitude')->implode(',');
+        $longitudes = $countries->pluck('longitude')->implode(',');
 
-                if ($response->successful()) {
-                    $data = $response->json()['current'];
-                    $isStorm = in_array($data['weather_code'], [95, 96, 99]);
+        try {
+            $response = Http::timeout(30)->retry(2, 1000)->get('https://api.open-meteo.com/v1/forecast', [
+                'latitude' => $latitudes,
+                'longitude' => $longitudes,
+                'current' => 'temperature_2m,wind_speed_10m,rain,weather_code',
+                'timezone' => 'auto'
+            ]);
+
+            if ($response->successful()) {
+                $results = $response->json();
+                $count = 0;
+
+                // Open-Meteo returns an array of objects if multiple coordinate pairs are queried.
+                // If only one pair is returned, it might be a single object.
+                $dataArray = is_array($results) && isset($results[0]) ? $results : [$results];
+
+                foreach ($countries as $index => $country) {
+                    $currentData = $dataArray[$index]['current'] ?? null;
+                    if ($currentData) {
+                        $isStorm = in_array($currentData['weather_code'], [95, 96, 99]);
+
+                        WeatherCache::updateOrCreate(
+                            ['country_id' => $country->id],
+                            [
+                                'temperature' => floatval($currentData['temperature_2m']),
+                                'rain' => floatval($currentData['rain']),
+                                'wind_speed' => floatval($currentData['wind_speed_10m']),
+                                'is_storm' => $isStorm,
+                                'fetched_at' => now(),
+                            ]
+                        );
+                        $count++;
+                    }
+                }
+
+                Log::info("WeatherService: Successfully batched synced weather for {$count} countries.");
+                return $count;
+            } else {
+                Log::error('WeatherService: Failed to fetch weather. Status code: ' . $response->status());
+                return 0;
+            }
+        } catch (\Exception $e) {
+            Log::error('WeatherService: Exception during weather sync: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Fetch weather on-demand for a single country.
+     */
+    public function fetchForCountry(Country $country)
+    {
+        if (!$country->latitude || !$country->longitude) {
+            return false;
+        }
+
+        try {
+            Log::info("WeatherService: Fetching weather for {$country->name}...");
+            $response = Http::timeout(10)->retry(2, 1000)->get('https://api.open-meteo.com/v1/forecast', [
+                'latitude' => $country->latitude,
+                'longitude' => $country->longitude,
+                'current' => 'temperature_2m,wind_speed_10m,rain,weather_code',
+                'timezone' => 'auto'
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $currentData = $data['current'] ?? null;
+
+                if ($currentData) {
+                    $isStorm = in_array($currentData['weather_code'], [95, 96, 99]);
 
                     WeatherCache::updateOrCreate(
                         ['country_id' => $country->id],
                         [
-                            'temperature' => $data['temperature_2m'],
-                            'rain' => $data['rain'],
-                            'wind_speed' => $data['wind_speed_10m'],
+                            'temperature' => floatval($currentData['temperature_2m']),
+                            'rain' => floatval($currentData['rain']),
+                            'wind_speed' => floatval($currentData['wind_speed_10m']),
                             'is_storm' => $isStorm,
                             'fetched_at' => now(),
                         ]
                     );
-                    $count++;
-                } else {
-                    $failed++;
+                    return true;
                 }
-            } catch (\Exception $e) {
-                Log::error("Weather error for {$country->name}: " . $e->getMessage());
-                $failed++;
-                continue;
             }
+        } catch (\Exception $e) {
+            Log::error("WeatherService: Failed to fetch weather for {$country->name}: " . $e->getMessage());
         }
-
-        Log::info("Weather sync complete. Success: {$count}, Failed: {$failed}");
-        return $count;
+        return false;
     }
 }

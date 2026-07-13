@@ -150,6 +150,7 @@
 let portMap;
 let portMarkers = [];
 let allPortsData = [];
+let searchTimeout;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Init map
@@ -158,37 +159,47 @@ document.addEventListener('DOMContentLoaded', function() {
         attribution: '© OpenStreetMap contributors'
     }).addTo(portMap);
 
-    // Load ports data
-    fetch('/api/ports')
-        .then(response => response.json())
+    // Initial load
+    fetchPortsData();
+
+    // Attach listeners for server-side filter and search
+    document.getElementById('searchPort').addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(fetchPortsData, 300); // 300ms debounce
+    });
+    document.getElementById('filterCountry').addEventListener('change', fetchPortsData);
+    document.getElementById('filterStatus').addEventListener('change', fetchPortsData);
+});
+
+function fetchPortsData() {
+    const searchTerm = document.getElementById('searchPort').value;
+    const countryFilter = document.getElementById('filterCountry').value;
+    const statusFilter = document.getElementById('filterStatus').value;
+
+    const tbody = document.getElementById('portTableBody');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Loading...</td></tr>';
+
+    // Build URL query params
+    const params = new URLSearchParams();
+    if (searchTerm) params.append('search', searchTerm);
+    if (countryFilter) params.append('country_id', countryFilter);
+    if (statusFilter) params.append('status', statusFilter);
+
+    fetch(`/api/ports?${params.toString()}`)
+        .then(response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+        })
         .then(data => {
             allPortsData = data;
             updateStats(data);
             displayPortsOnMap(data);
             updatePortTable(data);
         })
-        .catch(error => console.error('Error loading ports:', error));
-
-    // Search & Filter
-    document.getElementById('searchPort').addEventListener('input', filterPorts);
-    document.getElementById('filterCountry').addEventListener('change', filterPorts);
-    document.getElementById('filterStatus').addEventListener('change', filterPorts);
-});
-
-function filterPorts() {
-    const searchTerm = document.getElementById('searchPort').value.toLowerCase();
-    const countryFilter = document.getElementById('filterCountry').value;
-    const statusFilter = document.getElementById('filterStatus').value;
-
-    const filtered = allPortsData.filter(port => {
-        const matchSearch = port.name.toLowerCase().includes(searchTerm);
-        const matchCountry = !countryFilter || port.country_id == countryFilter;
-        const matchStatus = !statusFilter || port.status === statusFilter;
-        return matchSearch && matchCountry && matchStatus;
-    });
-
-    displayPortsOnMap(filtered);
-    updatePortTable(filtered);
+        .catch(error => {
+            console.error('Error loading ports:', error);
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">⚠️ Error loading ports</td></tr>';
+        });
 }
 
 function updateStats(ports) {
@@ -197,8 +208,10 @@ function updateStats(ports) {
     const inactive = ports.filter(p => p.status === 'Inactive').length;
     const maintenance = ports.filter(p => p.status === 'Maintenance').length;
     
-    document.getElementById('totalPorts').textContent = total;
-    document.getElementById('activePorts').textContent = active;
+    // Tunjukkan keterangan jika data di-limit
+    const limitInfo = total >= 500 ? '500+' : total;
+    document.getElementById('totalPorts').textContent = limitInfo;
+    document.getElementById('activePorts').textContent = active >= 500 ? '500+' : active;
     document.getElementById('inactivePorts').textContent = inactive;
     document.getElementById('maintenancePorts').textContent = maintenance;
 }
@@ -208,7 +221,11 @@ function displayPortsOnMap(ports) {
     portMarkers.forEach(marker => portMap.removeLayer(marker));
     portMarkers = [];
 
-    ports.forEach(port => {
+    // Jika data terlalu banyak, batasi marker di map demi performa
+    const maxMarkers = 500;
+    const displayList = ports.slice(0, maxMarkers);
+
+    displayList.forEach(port => {
         let color = '#198754'; // green for active
         if (port.status === 'Inactive') {
             color = '#dc3545';
@@ -216,33 +233,33 @@ function displayPortsOnMap(ports) {
             color = '#ffc107';
         }
 
-        // FIX: Konversi latitude dan longitude ke float
         const lat = parseFloat(port.latitude);
         const lng = parseFloat(port.longitude);
+
+        if (isNaN(lat) || isNaN(lng)) return;
 
         const iconHtml = `
             <div style="
                 background-color: ${color};
-                width: 25px;
-                height: 25px;
+                width: 20px;
+                height: 20px;
                 border-radius: 50%;
-                border: 3px solid white;
+                border: 2px solid white;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 12px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                font-size: 10px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             ">⚓</div>
         `;
 
         const customIcon = L.divIcon({
             html: iconHtml,
             className: 'port-marker',
-            iconSize: [25, 25],
-            iconAnchor: [12, 12]
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
         });
 
-        // FIX: Gunakan lat dan lng yang sudah di-convert
         const marker = L.marker([lat, lng], { icon: customIcon })
             .addTo(portMap)
             .bindPopup(`
@@ -255,6 +272,7 @@ function displayPortsOnMap(ports) {
                             ${port.status}
                         </span>
                     </div>
+                    <div style="margin-bottom: 5px;"><strong>Size:</strong> ${port.size || 'Unknown'}</div>
                     <div><strong>Coordinates:</strong><br>${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
                 </div>
             `);
@@ -265,17 +283,14 @@ function displayPortsOnMap(ports) {
 
 function updatePortTable(ports) {
     const tbody = document.getElementById('portTableBody');
-    tbody.innerHTML = '';
-
+    
     if (!ports || ports.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No ports found</td></tr>';
         return;
     }
 
-    console.log('Ports data:', ports); // Debug log
-
-    ports.forEach(port => {
-        // Pastikan data tidak null
+    // Gunakan map + join agar render DOM berjalan sangat cepat (1 kali operasi write)
+    const rowsHtml = ports.map(port => {
         const portName = port.name || 'Unknown';
         const portCode = port.code || 'N/A';
         const countryName = port.country || 'Unknown';
@@ -283,15 +298,16 @@ function updatePortTable(ports) {
         
         const badgeClass = portStatus === 'Active' ? 'bg-success' : (portStatus === 'Inactive' ? 'bg-danger' : 'bg-warning text-dark');
         
-        const row = `
+        return `
             <tr>
                 <td><strong>${portName}</strong><br><small class="text-muted">${portCode}</small></td>
                 <td>${countryName}</td>
                 <td><span class="badge ${badgeClass}">${portStatus}</span></td>
             </tr>
         `;
-        tbody.innerHTML += row;
-    });
+    }).join('');
+
+    tbody.innerHTML = rowsHtml;
 }
 </script>
 </body>

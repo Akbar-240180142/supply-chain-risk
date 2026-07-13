@@ -6,8 +6,14 @@ use App\Models\Country;
 use App\Models\RiskScore;
 use App\Models\CurrencyRate;
 use App\Models\Port;
+use App\Services\CurrencyService;
+use App\Services\EconomicService;
+use App\Services\WeatherService;
+use App\Services\NewsService;
+use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -18,6 +24,51 @@ class DashboardController extends Controller
 
     public function getDashboardData()
     {
+        // 1. Auto-refresh currency if stale
+        try {
+            app(CurrencyService::class)->autoRefreshIfStale();
+        } catch (\Exception $e) {
+            Log::warning('DashboardController: Currency auto-refresh failed: ' . $e->getMessage());
+        }
+
+        // 2. Auto-refresh weather if older than 2 hours
+        $weatherStale = false;
+        try {
+            $latestWeather = DB::table('weather_cache')->latest('fetched_at')->first();
+            $weatherStale = !$latestWeather || \Carbon\Carbon::parse($latestWeather->fetched_at)->lt(now()->subHours(2));
+            if ($weatherStale) {
+                Log::info('DashboardController: Weather data is stale. Auto-refreshing...');
+                app(WeatherService::class)->fetchAndSync();
+            }
+        } catch (\Exception $e) {
+            Log::warning('DashboardController: Weather auto-refresh failed: ' . $e->getMessage());
+        }
+
+        // 3. Auto-refresh news if not fetched today
+        $newsSynced = false;
+        try {
+            $todayNewsCount = DB::table('news_cache')->whereDate('created_at', today())->count();
+            if ($todayNewsCount === 0) {
+                Log::info('DashboardController: No news cached today. Auto-refreshing...');
+                app(NewsService::class)->fetchAndSync();
+                $newsSynced = true;
+            }
+        } catch (\Exception $e) {
+            Log::warning('DashboardController: News auto-refresh failed: ' . $e->getMessage());
+        }
+
+        // 4. Dynamically recalculate risk scores for today
+        try {
+            $todayRiskCount = DB::table('risk_scores')->where('record_date', today())->count();
+            $countryCount = Country::count();
+            if ($todayRiskCount < $countryCount || $weatherStale || $newsSynced) {
+                Log::info('DashboardController: Recalculating risk scores...');
+                app(RiskScoringService::class)->calculateAllCountries();
+            }
+        } catch (\Exception $e) {
+            Log::warning('DashboardController: Risk calculation failed: ' . $e->getMessage());
+        }
+
         $countries = Country::with(['riskScores' => function($q) {
                 $q->latest('record_date')->limit(1);
             }, 'economicIndicators' => function($q) {
@@ -32,25 +83,69 @@ class DashboardController extends Controller
             $risk = $c->riskScores->first();
             return [
                 'name' => $c->name,
-                'lat' => $c->latitude,
-                'lng' => $c->longitude,
+                'lat'  => $c->latitude,
+                'lng'  => $c->longitude,
                 'risk' => $risk ? $risk->total_risk_score : 0,
-                'level' => $risk ? $risk->risk_level : 'Low'
+                'level'=> $risk ? $risk->risk_level : 'Low'
             ];
         });
 
         return response()->json([
-            'countries' => $countries,
-            'chart_labels' => $countryNames,
-            'chart_risk' => $riskScores,
+            'countries'       => $countries,
+            'chart_labels'    => $countryNames,
+            'chart_risk'      => $riskScores,
             'chart_inflation' => $inflationRates,
-            'map_data' => $mapData
+            'map_data'        => $mapData
         ]);
     }
 
     public function showCountry($id)
     {
-        $country = Country::with([
+        $country = Country::findOrFail($id);
+
+        // 1. Fetch economic indicators on-demand if missing
+        $econCount = DB::table('economic_indicators')->where('country_id', $country->id)->count();
+        if ($econCount === 0) {
+            try {
+                app(EconomicService::class)->fetchForCountry($country);
+            } catch (\Exception $e) {
+                Log::warning("DashboardController: Dynamic economic fetch failed for {$country->name}: " . $e->getMessage());
+            }
+        }
+
+        // 2. Fetch weather on-demand if stale (older than 2 hours)
+        try {
+            $weather = DB::table('weather_cache')->where('country_id', $country->id)->first();
+            $weatherStale = !$weather || \Carbon\Carbon::parse($weather->fetched_at)->lt(now()->subHours(2));
+            if ($weatherStale) {
+                app(WeatherService::class)->fetchForCountry($country);
+            }
+        } catch (\Exception $e) {
+            Log::warning("DashboardController: Dynamic weather fetch failed for {$country->name}: " . $e->getMessage());
+        }
+
+        // 3. Fetch country news on-demand if stale (older than 6 hours)
+        try {
+            $hasRecentNews = DB::table('news_cache')
+                ->where('country_id', $country->id)
+                ->where('created_at', '>=', now()->subHours(6))
+                ->exists();
+            if (!$hasRecentNews) {
+                app(NewsService::class)->fetchForCountry($country);
+            }
+        } catch (\Exception $e) {
+            Log::warning("DashboardController: Dynamic news fetch failed for {$country->name}: " . $e->getMessage());
+        }
+
+        // 4. Recalculate risk score for this country specifically
+        try {
+            app(RiskScoringService::class)->calculateRiskForCountry($country->id);
+        } catch (\Exception $e) {
+            Log::warning("DashboardController: Risk calculation failed for {$country->name}: " . $e->getMessage());
+        }
+
+        // Load relations fresh
+        $country->load([
             'riskScores' => function($q) {
                 $q->orderBy('record_date', 'asc');
             },
@@ -58,9 +153,12 @@ class DashboardController extends Controller
                 $q->latest('year')->limit(10);
             },
             'news' => function($q) {
-                $q->latest('published_at')->limit(10);
+                $q->where(function($q2) {
+                    $q2->where('url', 'not like', '%example.com%')
+                       ->orWhereNull('url');
+                })->latest('published_at')->limit(10);
             }
-        ])->findOrFail($id);
+        ]);
 
         $currentExchangeRate = DB::table('currency_rates')
             ->where('base_currency', 'USD')
@@ -84,12 +182,12 @@ class DashboardController extends Controller
             $country2Id = $request->input('country2');
             
             $country1 = Country::with([
-                'riskScores' => function($q) { $q->latest('record_date')->limit(1); },
+                'riskScores'         => function($q) { $q->latest('record_date')->limit(1); },
                 'economicIndicators' => function($q) { $q->latest('year')->limit(1); }
             ])->findOrFail($country1Id);
             
             $country2 = Country::with([
-                'riskScores' => function($q) { $q->latest('record_date')->limit(1); },
+                'riskScores'         => function($q) { $q->latest('record_date')->limit(1); },
                 'economicIndicators' => function($q) { $q->latest('year')->limit(1); }
             ])->findOrFail($country2Id);
             
@@ -109,34 +207,43 @@ class DashboardController extends Controller
                 ->where('target_currency', $country2->currency_code)
                 ->latest('record_date')
                 ->value('rate');
+
+            // Get weather from weather_cache
+            $w1 = DB::table('weather_cache')->where('country_id', $country1->id)->first();
+            $w2 = DB::table('weather_cache')->where('country_id', $country2->id)->first();
+            
+            $weatherStr1 = $w1 ? round($w1->temperature) . '°C, ' . ($w1->is_storm ? 'Storm ⛈️' : ($w1->rain > 0 ? 'Rain 🌧️' : 'Clear/Cloudy 🌤️')) : 'N/A';
+            $weatherStr2 = $w2 ? round($w2->temperature) . '°C, ' . ($w2->is_storm ? 'Storm ⛈️' : ($w2->rain > 0 ? 'Rain 🌧️' : 'Clear/Cloudy 🌤️')) : 'N/A';
             
             return response()->json([
                 'country1' => [
-                    'name' => $country1->name,
-                    'risk_score' => floatval($risk1->total_risk_score ?? 0),
-                    'risk_level' => $risk1->risk_level ?? 'Low',
-                    'gdp' => floatval($econ1->gdp ?? 0),
-                    'inflation' => floatval($econ1->inflation_rate ?? 0),
-                    'population' => intval($econ1->population ?? 0),
-                    'currency' => $country1->currency_code ?? 'USD',
+                    'name'          => $country1->name,
+                    'risk_score'    => floatval($risk1->total_risk_score ?? 0),
+                    'risk_level'    => $risk1->risk_level ?? 'Low',
+                    'gdp'           => floatval($econ1->gdp ?? 0),
+                    'inflation'     => floatval($econ1->inflation_rate ?? 0),
+                    'population'    => intval($econ1->population ?? 0),
+                    'currency'      => $country1->currency_code ?? 'USD',
                     'exchange_rate' => floatval($rate1 ?? 0),
+                    'weather'       => $weatherStr1
                 ],
                 'country2' => [
-                    'name' => $country2->name,
-                    'risk_score' => floatval($risk2->total_risk_score ?? 0),
-                    'risk_level' => $risk2->risk_level ?? 'Low',
-                    'gdp' => floatval($econ2->gdp ?? 0),
-                    'inflation' => floatval($econ2->inflation_rate ?? 0),
-                    'population' => intval($econ2->population ?? 0),
-                    'currency' => $country2->currency_code ?? 'USD',
+                    'name'          => $country2->name,
+                    'risk_score'    => floatval($risk2->total_risk_score ?? 0),
+                    'risk_level'    => $risk2->risk_level ?? 'Low',
+                    'gdp'           => floatval($econ2->gdp ?? 0),
+                    'inflation'     => floatval($econ2->inflation_rate ?? 0),
+                    'population'    => intval($econ2->population ?? 0),
+                    'currency'      => $country2->currency_code ?? 'USD',
                     'exchange_rate' => floatval($rate2 ?? 0),
+                    'weather'       => $weatherStr2
                 ]
             ]);
             
         } catch (\Exception $e) {
-            \Log::error('Compare Error: ' . $e->getMessage());
+            Log::error('DashboardController: Compare Error: ' . $e->getMessage());
             return response()->json([
-                'error' => 'Failed to compare countries',
+                'error'   => 'Failed to compare countries',
                 'message' => $e->getMessage()
             ], 500);
         }
@@ -148,20 +255,82 @@ class DashboardController extends Controller
         return view('ports', compact('countries'));
     }
 
-    public function getPortsData()
+    public function getPortsData(Request $request)
     {
         try {
-            $ports = DB::table('ports')->get();
+            $query = DB::table('ports');
+
+            // Apply database-side filtering
+            if ($request->has('country_id') && !empty($request->input('country_id'))) {
+                $query->where('country_id', $request->input('country_id'));
+            }
+
+            if ($request->has('status') && !empty($request->input('status'))) {
+                $status = $request->input('status');
+                if ($status === 'Active') {
+                    $query->where(function($q) {
+                        $q->where('is_active', true)->where('status', 'Active');
+                    });
+                } elseif ($status === 'Inactive') {
+                    $query->where(function($q) {
+                        $q->where('is_active', false)->orWhere('status', 'Inactive');
+                    });
+                } else {
+                    $query->where('status', $status);
+                }
+            }
+
+            if ($request->has('search') && !empty($request->input('search'))) {
+                $search = $request->input('search');
+                $query->where(function($q) use ($search) {
+                    $q->where('port_name', 'like', '%' . $search . '%')
+                      ->orWhere('name', 'like', '%' . $search . '%')
+                      ->orWhere('code', 'like', '%' . $search . '%');
+                });
+            }
+
+            // If no filters are applied, default to showing Major/Medium/Small ports or limit to 500 
+            // to keep the frontend responsive and avoid browser rendering freeze
+            $isFiltered = $request->has('country_id') || $request->has('status') || $request->has('search');
+            if (!$isFiltered) {
+                // Return max 500 ports prioritising bigger ones
+                $query->orderByRaw("CASE 
+                    WHEN harbor_size = 'Major' THEN 1 
+                    WHEN harbor_size = 'Medium' THEN 2 
+                    WHEN harbor_size = 'Small' THEN 3 
+                    ELSE 4 END ASC")
+                    ->limit(500);
+            }
+
+            $ports = $query->get();
+
+            // Auto-fetch from public dataset if ports are empty
+            if ($ports->isEmpty() && !$isFiltered) {
+                Log::info('DashboardController: Ports table is empty. Fetching from tayljordan/ports dataset...');
+                try {
+                    app(\App\Services\PortService::class)->fetchAndSync();
+                    $ports = DB::table('ports')
+                        ->orderByRaw("CASE 
+                            WHEN harbor_size = 'Major' THEN 1 
+                            WHEN harbor_size = 'Medium' THEN 2 
+                            WHEN harbor_size = 'Small' THEN 3 
+                            ELSE 4 END ASC")
+                        ->limit(500)
+                        ->get();
+                } catch (\Exception $ex) {
+                    Log::error('DashboardController: Lazy ports fetching failed: ' . $ex->getMessage());
+                }
+            }
             
             $portsData = $ports->map(function($port) {
                 $portName = $port->port_name ?? $port->name ?? 'Unknown Port';
                 $portCode = $port->code;
                 if (empty($portCode)) {
-                    $words = explode(' ', $portName);
+                    $words    = explode(' ', $portName);
                     $portCode = strtoupper(substr(implode('', array_map(function($w) { return substr($w, 0, 1); }, $words)), 0, 3));
                 }
                 $countryName = $port->country_name ?? 'Unknown';
-                $status = 'Active';
+                $status      = 'Active';
                 if (isset($port->is_active) && !$port->is_active) {
                     $status = 'Inactive';
                 } elseif (isset($port->status)) {
@@ -169,23 +338,24 @@ class DashboardController extends Controller
                 }
                 
                 return [
-                    'id' => $port->id,
-                    'name' => $portName,
-                    'code' => $portCode ?? 'N/A',
-                    'country' => $countryName,
+                    'id'         => $port->id,
+                    'name'       => $portName,
+                    'code'       => $portCode ?? 'N/A',
+                    'country'    => $countryName,
                     'country_id' => $port->country_id,
-                    'latitude' => (float) $port->latitude,
-                    'longitude' => (float) $port->longitude,
-                    'status' => $status
+                    'latitude'   => (float) $port->latitude,
+                    'longitude'  => (float) $port->longitude,
+                    'status'     => $status,
+                    'size'       => $port->harbor_size ?? 'Medium'
                 ];
             });
             
             return response()->json($portsData);
             
         } catch (\Exception $e) {
-            \Log::error('Ports API Error: ' . $e->getMessage());
+            Log::error('DashboardController: Ports API Error: ' . $e->getMessage());
             return response()->json([
-                'error' => 'Failed to load ports',
+                'error'   => 'Failed to load ports',
                 'message' => $e->getMessage()
             ], 500);
         }
@@ -207,15 +377,37 @@ class DashboardController extends Controller
 
     public function apiCurrency()
     {
+        // Auto-refresh jika data belum ada hari ini
+        $todayCount = DB::table('currency_rates')->where('record_date', today())->count();
+        if ($todayCount === 0) {
+            try {
+                app(CurrencyService::class)->fetchAndSync();
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: Currency sync in apiCurrency failed: ' . $e->getMessage());
+            }
+        }
+
         $currency = DB::table('currency_rates')
             ->select('base_currency', 'target_currency', 'rate', 'record_date')
             ->latest('record_date')
             ->get();
+
         return response()->json($currency);
     }
 
     public function getEconomicTrends()
     {
+        // Auto-refresh jika tidak ada data ekonomi sama sekali
+        $econCount = DB::table('economic_indicators')->count();
+        if ($econCount === 0) {
+            try {
+                Log::info('DashboardController: No economic data found. Triggering sync from World Bank API...');
+                app(EconomicService::class)->fetchAndSync();
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: Economic sync failed: ' . $e->getMessage());
+            }
+        }
+
         $trends = DB::table('economic_indicators')
             ->join('countries', 'economic_indicators.country_id', '=', 'countries.id')
             ->select(

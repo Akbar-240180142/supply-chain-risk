@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class Port extends Model
 {
     protected $fillable = [
-        'port_name', 'country_id', 'country_name', 
-        'latitude', 'longitude', 'harbor_size', 'is_active'
+        'port_name', 'name', 'code', 'country_id', 'country_name', 
+        'latitude', 'longitude', 'harbor_size', 'is_active', 'status'
     ];
 
     public function country() { return $this->belongsTo(Country::class); }

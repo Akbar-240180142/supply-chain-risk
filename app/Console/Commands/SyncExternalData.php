@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\NewsService;
+use App\Services\PortService;
 use Illuminate\Console\Command;
 use App\Services\CountryService;
 use App\Services\WeatherService;
@@ -43,6 +44,11 @@ class SyncExternalData extends Command
         $this->info('5. Syncing News (GNews API)...');
         $newsCount = app(NewsService::class)->fetchAndSync();
         $this->info("   ✅ Synced {$newsCount} news articles.");
+        $this->newLine();
+
+        $this->info('6. Syncing Ports (tayljordan/ports GitHub Dataset)...');
+        $portCount = app(PortService::class)->fetchAndSync();
+        $this->info("   ✅ Synced {$portCount} ports.");
         $this->newLine();
 
         $this->info('🎉 Data Sync Completed Successfully!');

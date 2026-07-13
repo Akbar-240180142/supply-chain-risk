@@ -6,6 +6,11 @@
     <title>Manage Ports - Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        /* Fix: pagination SVG icons tidak raksasa */
+        .pagination svg { width: 1rem; height: 1rem; vertical-align: middle; }
+        .page-link svg  { width: 0.875rem; height: 0.875rem; }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -49,14 +54,22 @@
                         @forelse($ports as $port)
                             <tr>
                                 <td>{{ $port->id }}</td>
-                                <td>{{ $port->name }}</td>
-                                <td><code>{{ $port->code }}</code></td>
-                                <td>{{ $port->country->name ?? 'N/A' }}</td>
+                                {{-- port_name adalah kolom yang digunakan, bukan name --}}
+                                <td>{{ $port->port_name ?: ($port->name ?: 'N/A') }}</td>
+                                <td>
+                                    @if($port->code)
+                                        <code>{{ $port->code }}</code>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                {{-- country_name di-store langsung di tabel ports --}}
+                                <td>{{ $port->country_name ?: optional($port->country)->name ?: 'N/A' }}</td>
                                 <td>
                                     @php
                                         $badge = $port->status === 'Active' ? 'success' : ($port->status === 'Inactive' ? 'danger' : 'warning');
                                     @endphp
-                                    <span class="badge bg-{{ $badge }}">{{ $port->status }}</span>
+                                    <span class="badge bg-{{ $badge }}">{{ $port->status ?? 'Unknown' }}</span>
                                 </td>
                                 <td>
                                     <a href="{{ route('admin.ports.edit', $port->id) }}" class="btn btn-sm btn-warning">
@@ -75,7 +88,49 @@
                     </tbody>
                 </table>
             </div>
-            {{ $ports->links() }}
+
+            {{-- Custom pagination: ganti SVG raksasa dengan teks biasa --}}
+            @if($ports->hasPages())
+            <nav aria-label="Ports pagination" class="mt-3">
+                <ul class="pagination pagination-sm justify-content-center flex-wrap">
+                    @if($ports->onFirstPage())
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Prev</span>
+                        </li>
+                    @else
+                        <li class="page-item">
+                            <a class="page-link" href="{{ $ports->previousPageUrl() }}">&laquo; Prev</a>
+                        </li>
+                    @endif
+
+                    @foreach($ports->getUrlRange(max(1, $ports->currentPage()-2), min($ports->lastPage(), $ports->currentPage()+2)) as $page => $url)
+                        @if($page == $ports->currentPage())
+                            <li class="page-item active">
+                                <span class="page-link">{{ $page }}</span>
+                            </li>
+                        @else
+                            <li class="page-item">
+                                <a class="page-link" href="{{ $url }}">{{ $page }}</a>
+                            </li>
+                        @endif
+                    @endforeach
+
+                    @if($ports->hasMorePages())
+                        <li class="page-item">
+                            <a class="page-link" href="{{ $ports->nextPageUrl() }}">Next &raquo;</a>
+                        </li>
+                    @else
+                        <li class="page-item disabled">
+                            <span class="page-link">Next &raquo;</span>
+                        </li>
+                    @endif
+                </ul>
+                <p class="text-center text-muted small">
+                    Menampilkan {{ $ports->firstItem() }}–{{ $ports->lastItem() }} dari {{ $ports->total() }} port
+                    (Halaman {{ $ports->currentPage() }} dari {{ $ports->lastPage() }})
+                </p>
+            </nav>
+            @endif
         </div>
     </div>
 </div>

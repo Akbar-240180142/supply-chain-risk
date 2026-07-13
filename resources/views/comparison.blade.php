@@ -266,6 +266,7 @@ function displayComparison(data) {
     document.getElementById('population1').textContent = formatNumber(parseInt(c1.population));
     document.getElementById('currency1').textContent = c1.currency;
     document.getElementById('exchange1').textContent = '1 USD = ' + parseFloat(c1.exchange_rate).toFixed(2) + ' ' + c1.currency;
+    document.getElementById('weather1').textContent = c1.weather || 'N/A';
     
     // Update Country 2
     document.getElementById('name2').textContent = c2.name;
@@ -277,6 +278,7 @@ function displayComparison(data) {
     document.getElementById('population2').textContent = formatNumber(parseInt(c2.population));
     document.getElementById('currency2').textContent = c2.currency;
     document.getElementById('exchange2').textContent = '1 USD = ' + parseFloat(c2.exchange_rate).toFixed(2) + ' ' + c2.currency;
+    document.getElementById('weather2').textContent = c2.weather || 'N/A';
     
     updateCharts(c1, c2);
     document.getElementById('comparisonResults').scrollIntoView({ behavior: 'smooth' });

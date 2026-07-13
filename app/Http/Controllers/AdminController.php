@@ -47,7 +47,11 @@ class AdminController extends Controller
             'country_id' => 'nullable|exists:countries,id'
         ]);
 
-        NewsCache::create($request->all());
+        $data = $request->all();
+        $data['description'] = $request->content;
+        $data['url'] = url('/news/' . \Illuminate\Support\Str::slug($request->title) . '-' . uniqid());
+
+        NewsCache::create($data);
 
         return redirect()->route('admin.news')->with('success', 'News added successfully!');
     }
@@ -72,7 +76,13 @@ class AdminController extends Controller
             'country_id' => 'nullable|exists:countries,id'
         ]);
 
-        $news->update($request->all());
+        $data = $request->all();
+        $data['description'] = $request->content;
+        if (empty($news->url)) {
+            $data['url'] = url('/news/' . \Illuminate\Support\Str::slug($request->title) . '-' . uniqid());
+        }
+
+        $news->update($data);
 
         return redirect()->route('admin.news')->with('success', 'News updated successfully!');
     }
@@ -109,7 +119,14 @@ class AdminController extends Controller
             'status' => 'required|in:Active,Inactive,Maintenance'
         ]);
 
-        Port::create($request->all());
+        $country = Country::findOrFail($request->country_id);
+
+        $data = $request->all();
+        $data['port_name'] = $request->name;
+        $data['country_name'] = $country->name;
+        $data['is_active'] = $request->status === 'Active';
+
+        Port::create($data);
 
         return redirect()->route('admin.ports')->with('success', 'Port added successfully!');
     }
@@ -134,7 +151,14 @@ class AdminController extends Controller
             'status' => 'required|in:Active,Inactive,Maintenance'
         ]);
 
-        $port->update($request->all());
+        $country = Country::findOrFail($request->country_id);
+
+        $data = $request->all();
+        $data['port_name'] = $request->name;
+        $data['country_name'] = $country->name;
+        $data['is_active'] = $request->status === 'Active';
+
+        $port->update($data);
 
         return redirect()->route('admin.ports')->with('success', 'Port updated successfully!');
     }

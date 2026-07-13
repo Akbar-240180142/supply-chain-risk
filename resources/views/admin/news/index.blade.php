@@ -6,6 +6,11 @@
     <title>Manage News - Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        /* Fix: pagination SVG icons tidak raksasa */
+        .pagination svg { width: 1rem; height: 1rem; vertical-align: middle; }
+        .page-link svg { width: 0.875rem; height: 0.875rem; }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -50,7 +55,7 @@
                             <tr>
                                 <td>{{ $item->id }}</td>
                                 <td>{{ Str::limit($item->title, 50) }}</td>
-                                <td>{{ $item->country->name ?? 'N/A' }}</td>
+                                <td>{{ optional($item->country)->name ?? 'Global' }}</td>
                                 <td>
                                     @php
                                         $badge = $item->sentiment === 'Positive' ? 'success' : ($item->sentiment === 'Negative' ? 'danger' : 'secondary');
@@ -75,7 +80,51 @@
                     </tbody>
                 </table>
             </div>
-            {{ $news->links() }}
+            {{-- Custom pagination: ganti SVG raksasa dengan teks biasa --}}
+            @if($news->hasPages())
+            <nav aria-label="News pagination" class="mt-3">
+                <ul class="pagination pagination-sm justify-content-center flex-wrap">
+                    {{-- Tombol Previous --}}
+                    @if($news->onFirstPage())
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Prev</span>
+                        </li>
+                    @else
+                        <li class="page-item">
+                            <a class="page-link" href="{{ $news->previousPageUrl() }}">&laquo; Prev</a>
+                        </li>
+                    @endif
+
+                    {{-- Nomor halaman --}}
+                    @foreach($news->getUrlRange(max(1, $news->currentPage()-2), min($news->lastPage(), $news->currentPage()+2)) as $page => $url)
+                        @if($page == $news->currentPage())
+                            <li class="page-item active">
+                                <span class="page-link">{{ $page }}</span>
+                            </li>
+                        @else
+                            <li class="page-item">
+                                <a class="page-link" href="{{ $url }}">{{ $page }}</a>
+                            </li>
+                        @endif
+                    @endforeach
+
+                    {{-- Tombol Next --}}
+                    @if($news->hasMorePages())
+                        <li class="page-item">
+                            <a class="page-link" href="{{ $news->nextPageUrl() }}">Next &raquo;</a>
+                        </li>
+                    @else
+                        <li class="page-item disabled">
+                            <span class="page-link">Next &raquo;</span>
+                        </li>
+                    @endif
+                </ul>
+                <p class="text-center text-muted small">
+                    Menampilkan {{ $news->firstItem() }}–{{ $news->lastItem() }} dari {{ $news->total() }} berita
+                    (Halaman {{ $news->currentPage() }} dari {{ $news->lastPage() }})
+                </p>
+            </nav>
+            @endif
         </div>
     </div>
 </div>

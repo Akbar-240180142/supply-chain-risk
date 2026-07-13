@@ -10,7 +10,11 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             DictionarySeeder::class,
-            CountrySeeder::class, // Tambahkan baris ini
+            CountrySeeder::class,
+            PortSeeder::class,
+            UserSeeder::class,
+            RiskScoreSeeder::class,
+            ShipmentSeeder::class,
         ]);
     }
 }

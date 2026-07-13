@@ -6,17 +6,6 @@
     <title>Admin Dashboard - Supply Chain Risk</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-<!-- Tambahkan card ini di dalam row dashboard admin -->
-<div class="col-md-4">
-    <div class="card shadow-sm">
-        <div class="card-body text-center">
-            <h3>👥</h3>
-            <h5>User Management</h5>
-            <p class="text-muted">Kelola user sistem</p>
-            <a href="{{ route('admin.users') }}" class="btn btn-primary">Manage Users</a>
-        </div>
-    </div>
-</div>
 </head>
 <body class="bg-light">
 
@@ -114,8 +103,23 @@
                 </div>
             </div>
         </div>
+
+        <div class="col-md-6 mt-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">👥 User Management</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Kelola user sistem</p>
+                    <a href="{{ route('admin.users') }}" class="btn btn-primary">
+                        <i class="bi bi-people"></i> Manage Users
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

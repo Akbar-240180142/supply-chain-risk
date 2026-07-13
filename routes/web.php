@@ -3,6 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\CountryController;
+use App\Http\Controllers\TrackingController;
 
 // ============ DASHBOARD ============
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -21,30 +24,79 @@ Route::get('/api/ports', [DashboardController::class, 'getPortsData'])->name('ap
 
 // ============ NEWS ============
 Route::get('/news', function() {
-    $newsFromDb = \App\Models\NewsCache::with('country')
-        ->latest('published_at')
-        ->limit(50)
-        ->get();
-    
-    if ($newsFromDb->count() === 0) {
-        $newsService = app(\App\Services\NewsService::class);
-        $newsService->fetchAndSync();
-        $newsFromDb = \App\Models\NewsCache::with('country')
-            ->latest('published_at')
-            ->limit(50)
-            ->get();
-    }
-    
-    return view('news', ['news' => $newsFromDb]);
+    $gnewsKey = env('GNEWS_API_KEY');
+    $hasRealKey = $gnewsKey && $gnewsKey !== 'your_gnews_api_key_here';
+
+    // Cek apakah sudah ada berita real di database (jangan fetch sinkron agar halaman cepat)
+    $realCount = \App\Models\NewsCache::where('url', 'not like', '%example.com%')
+        ->whereNotNull('url')
+        ->where('url', '!=', '')
+        ->count();
+
+    // Ambil daftar semua negara untuk dropdown filter
+    $countries = \App\Models\Country::orderBy('name')->get();
+
+    return view('news', [
+        'hasRealKey'  => $hasRealKey,
+        'isRealData'  => $realCount > 0,
+        'hasData'     => $realCount > 0,
+        'countries'   => $countries,
+    ]);
 })->name('news');
 
 Route::get('/api/news', function() {
-    $newsFromDb = \App\Models\NewsCache::with('country')
+    // Prioritaskan berita dengan URL real
+    $news = \App\Models\NewsCache::with('country')
+        ->where(function($q) {
+            $q->where('url', 'not like', '%example.com%')
+              ->whereNotNull('url')
+              ->where('url', '!=', '');
+        })
         ->latest('published_at')
-        ->limit(50)
+        ->limit(100)
         ->get();
-    return response()->json($newsFromDb);
+
+    // Fallback ke semua berita jika tidak ada yang real
+    if ($news->count() === 0) {
+        $news = \App\Models\NewsCache::with('country')
+            ->latest('published_at')
+            ->limit(100)
+            ->get();
+    }
+
+    // Pastikan setiap item punya country (handle null)
+    $result = $news->map(function($item) {
+        return [
+            'id'              => $item->id,
+            'title'           => $item->title,
+            'description'     => $item->description,
+            'url'             => $item->url,
+            'source'          => $item->source ?? 'Unknown',
+            'published_at'    => $item->published_at,
+            'sentiment'       => $item->sentiment ?? 'Neutral',
+            'sentiment_score' => $item->sentiment_score ?? 0,
+            'country'         => $item->country
+                ? ['id' => $item->country->id, 'name' => $item->country->name]
+                : ['id' => null, 'name' => 'Global'],
+        ];
+    });
+
+    return response()->json($result);
 })->name('api.news');
+
+// Endpoint untuk trigger sync berita dari GNews (AJAX, tidak blocking page load)
+Route::post('/api/news/sync', function() {
+    $gnewsKey = env('GNEWS_API_KEY');
+    if (!$gnewsKey || $gnewsKey === 'your_gnews_api_key_here') {
+        return response()->json(['success' => false, 'message' => 'GNews API key tidak dikonfigurasi'], 400);
+    }
+    try {
+        $count = app(\App\Services\NewsService::class)->fetchAndSync();
+        return response()->json(['success' => true, 'synced' => $count]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    }
+})->name('api.news.sync');
 
 // ============ WATCHLIST ============
 Route::get('/watchlist', function() {
@@ -96,12 +148,17 @@ Route::post('/api/watchlist/toggle', function() {
     }
 });
 
+// ============ TRACKING ============
+Route::get('/tracking', [TrackingController::class, 'index'])->name('tracking.index');
+Route::post('/tracking', [TrackingController::class, 'search'])->name('tracking.search');
+
 // ============ REST API ENDPOINTS (WAJIB PDF) ============
 Route::prefix('api')->group(function () {
     Route::get('/countries', [DashboardController::class, 'apiCountries']);
     Route::get('/risk', [DashboardController::class, 'apiRisk']);
     Route::get('/currency', [DashboardController::class, 'apiCurrency']);
     Route::get('/economic-trends', [DashboardController::class, 'getEconomicTrends']);
+    Route::post('/tracking', [TrackingController::class, 'apiSearch'])->name('api.tracking.search');
 });
 
 // ============ ADMIN DASHBOARD ROUTES ============

@@ -387,6 +387,9 @@
             <span>Supply Chain Risk Intelligence</span>
         </a>
         <div class="d-flex gap-2 flex-wrap">
+            <a href="#" class="nav-link-modern" data-bs-toggle="offcanvas" data-bs-target="#trackingOffcanvas">
+                <span>📦</span> Track Package
+            </a>
             <a href="/comparison" class="nav-link-modern">
                 <span>🔀</span> Comparison
             </a>
@@ -612,14 +615,23 @@ document.addEventListener('DOMContentLoaded', function() {
         attribution: '© OpenStreetMap contributors'
     }).addTo(weatherMap);
 
-    // Load watchlist DAN dashboard data
+    // Load watchlist, dashboard data, and live currency rates from APIs
     Promise.all([
         fetch('/api/watchlist').then(r => r.json()).catch(() => []),
-        fetch('/api/dashboard-data').then(r => r.json()).catch(() => ({ countries: [], chart_labels: [], chart_risk: [], map_data: [] }))
+        fetch('/api/dashboard-data').then(r => r.json()).catch(() => ({ countries: [], chart_labels: [], chart_risk: [], map_data: [] })),
+        fetch('/api/currency').then(r => r.json()).catch(() => [])
     ])
-    .then(([watchlistData, dashboardData]) => {
+    .then(([watchlistData, dashboardData, currencyDataList]) => {
         watchlistIds = watchlistData.map(item => item.country_id) || [];
         allCountriesData = dashboardData.countries || [];
+        
+        // Build rates mapping dynamically from API data
+        const liveRates = {};
+        if (Array.isArray(currencyDataList)) {
+            currencyDataList.forEach(item => {
+                liveRates[item.target_currency] = parseFloat(item.rate);
+            });
+        }
         
         // Update stats dengan validasi
         let totalRisk = 0;
@@ -649,7 +661,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateTable(allCountriesData);
         initChart(dashboardData.chart_labels || [], dashboardData.chart_risk || []);
         initMapMarkers(dashboardData.map_data || []);
-        initCurrencyChart(allCountriesData);
+        initCurrencyChart(allCountriesData, liveRates);
         
         // Load weather data
         loadWeatherData(dashboardData.map_data || []);
@@ -1024,19 +1036,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function initCurrencyChart(countries) {
+    function initCurrencyChart(countries, rates) {
         if (!countries || countries.length === 0) return;
         
         const ctx = document.getElementById('currencyChart').getContext('2d');
         const currencyData = countries.filter(c => c.currency_code && c.currency_code !== 'USD').slice(0, 10);
-        const rates = {
+        
+        // Dynamic rates from ExchangeRate API with static fallback defaults
+        const defaultRates = {
             'IDR': 15500, 'CNY': 7.25, 'EUR': 0.92, 'JPY': 155, 
             'GBP': 0.79, 'AUD': 1.52, 'SGD': 1.35, 'MYR': 4.70,
             'THB': 36.5, 'VND': 24500, 'INR': 83.5, 'BRL': 5.15,
             'RUB': 92, 'KRW': 1350, 'AED': 3.67, 'CAD': 1.36
         };
+        const activeRates = rates && Object.keys(rates).length > 0 ? rates : defaultRates;
+
         const labels = currencyData.map(c => c.currency_code);
-        const data = currencyData.map(c => rates[c.currency_code] || 0);
+        const data = currencyData.map(c => activeRates[c.currency_code] || defaultRates[c.currency_code] || 0);
 
         new Chart(ctx, {
             type: 'line',
@@ -1094,5 +1110,96 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<!-- Tracking Offcanvas -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="trackingOffcanvas" aria-labelledby="trackingOffcanvasLabel" style="width: 450px;">
+  <div class="offcanvas-header bg-dark text-white">
+    <h5 class="offcanvas-title" id="trackingOffcanvasLabel"><i class="bi bi-box-seam"></i> Lacak Paket</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-4 bg-white">
+    <form id="trackingForm" class="mb-4">
+        @csrf
+        <label class="form-label fw-bold">Nomor Resi</label>
+        <div class="input-group">
+            <input type="text" id="trackingNumber" name="tracking_number" class="form-control" placeholder="Cth: TA-2026-0001" required>
+            <button class="btn btn-primary" type="submit" id="btnTrack">
+                <span id="trackBtnText">Lacak</span>
+                <span class="spinner-border spinner-border-sm d-none" id="trackSpinner" role="status" aria-hidden="true"></span>
+            </button>
+        </div>
+        <div id="trackingError" class="text-danger small mt-2 d-none"></div>
+    </form>
+
+    <div id="trackingResultContainer">
+        <!-- Hasil AJAX akan dimasukkan ke sini -->
+        <div class="text-center text-muted mt-5" id="trackingEmptyState">
+            <i class="bi bi-box display-4 mb-2"></i>
+            <p>Masukkan resi untuk melacak perjalanan paket Anda dan mengetahui risiko di lokasi terkininya.</p>
+        </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Logic untuk form tracking
+document.addEventListener('DOMContentLoaded', function() {
+    const trackingForm = document.getElementById('trackingForm');
+    if (trackingForm) {
+        trackingForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const trackingNumber = document.getElementById('trackingNumber').value;
+            const btnText = document.getElementById('trackBtnText');
+            const spinner = document.getElementById('trackSpinner');
+            const btn = document.getElementById('btnTrack');
+            const errorDiv = document.getElementById('trackingError');
+            const resultContainer = document.getElementById('trackingResultContainer');
+            
+            // Reset state
+            errorDiv.classList.add('d-none');
+            btn.disabled = true;
+            btnText.classList.add('d-none');
+            spinner.classList.remove('d-none');
+            
+            fetch('{{ route("api.tracking.search") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'text/html'
+                },
+                body: JSON.stringify({ tracking_number: trackingNumber })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw err; });
+                }
+                return response.text();
+            })
+            .then(html => {
+                resultContainer.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorDiv.textContent = error.error || 'Terjadi kesalahan saat melacak paket.';
+                errorDiv.classList.remove('d-none');
+                resultContainer.innerHTML = `
+                    <div class="text-center text-muted mt-5" id="trackingEmptyState">
+                        <i class="bi bi-box display-4 mb-2"></i>
+                        <p>Masukkan resi untuk melacak perjalanan paket Anda dan mengetahui risiko di lokasi terkininya.</p>
+                    </div>
+                `;
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btnText.classList.remove('d-none');
+                spinner.classList.add('d-none');
+            });
+        });
+    }
+});
+</script>
+
 </body>
 </html>
