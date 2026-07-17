@@ -167,7 +167,8 @@ class ApiTest extends TestCase
 
     public function test_admin_store_news()
     {
-        $response = $this->post('/admin/news/store', [
+        $admin = User::factory()->create(['role' => 'admin']);
+        $response = $this->actingAs($admin)->post('/admin/news/store', [
             'title' => 'Test News Title',
             'content' => 'Test News Content Description',
             'source' => 'Test Source',
@@ -183,8 +184,9 @@ class ApiTest extends TestCase
 
     public function test_admin_store_port()
     {
+        $admin = User::factory()->create(['role' => 'admin']);
         $country = Country::first();
-        $response = $this->post('/admin/ports/store', [
+        $response = $this->actingAs($admin)->post('/admin/ports/store', [
             'name' => 'Test Port',
             'code' => 'TST',
             'country_id' => $country->id,
@@ -201,7 +203,8 @@ class ApiTest extends TestCase
 
     public function test_admin_store_user()
     {
-        $response = $this->post('/admin/users/store', [
+        $admin = User::factory()->create(['role' => 'admin']);
+        $response = $this->actingAs($admin)->post('/admin/users/store', [
             'name' => 'Test User',
             'email' => 'testuser@example.com',
             'password' => 'password123',

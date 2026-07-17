@@ -6,6 +6,8 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\CountryController;
 use App\Http\Controllers\TrackingController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Admin\ShipmentController;
 
 // ============ DASHBOARD ============
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -100,7 +102,7 @@ Route::post('/api/news/sync', function() {
 
 // ============ WATCHLIST ============
 Route::get('/watchlist', function() {
-    $userId = 1;
+    $userId = auth()->id() ?: 1;
     $watchlist = \App\Models\Watchlist::where('user_id', $userId)
         ->with(['country' => function($q) {
             $q->with(['riskScores' => function($q2) {
@@ -112,7 +114,7 @@ Route::get('/watchlist', function() {
 })->name('watchlist');
 
 Route::delete('/watchlist/{countryId}', function($countryId) {
-    $userId = 1;
+    $userId = auth()->id() ?: 1;
     \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
         ->delete();
@@ -120,7 +122,7 @@ Route::delete('/watchlist/{countryId}', function($countryId) {
 })->name('watchlist.remove');
 
 Route::get('/api/watchlist', function() {
-    $userId = 1;
+    $userId = auth()->id() ?: 1;
     return \App\Models\Watchlist::where('user_id', $userId)
         ->with(['country' => function($q) {
             $q->with(['riskScores' => function($q2) {
@@ -131,7 +133,7 @@ Route::get('/api/watchlist', function() {
 });
 
 Route::post('/api/watchlist/toggle', function() {
-    $userId = 1;
+    $userId = auth()->id() ?: 1;
     $countryId = request()->input('country_id');
     $existing = \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
@@ -161,8 +163,13 @@ Route::prefix('api')->group(function () {
     Route::post('/tracking', [TrackingController::class, 'apiSearch'])->name('api.tracking.search');
 });
 
+// ============ AUTHENTICATION ============
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
 // ============ ADMIN DASHBOARD ROUTES ============
-Route::prefix('admin')->name('admin.')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(function () {
     Route::get('/', [AdminController::class, 'index'])->name('index');
     
     // News Management
@@ -186,6 +193,19 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/users/store', [AdminController::class, 'storeUser'])->name('users.store');
     Route::post('/users/{id}/update', [AdminController::class, 'updateUser'])->name('users.update');
     Route::get('/users/{id}/delete', [AdminController::class, 'deleteUser'])->name('users.delete');
+
+    // Shipment & Tracking Management
+    Route::get('/shipments', [ShipmentController::class, 'index'])->name('shipments.index');
+    Route::get('/shipments/create', [ShipmentController::class, 'create'])->name('shipments.create');
+    Route::post('/shipments/store', [ShipmentController::class, 'store'])->name('shipments.store');
+    Route::get('/shipments/{id}/edit', [ShipmentController::class, 'edit'])->name('shipments.edit');
+    Route::post('/shipments/{id}/update', [ShipmentController::class, 'update'])->name('shipments.update');
+    Route::get('/shipments/{id}/delete', [ShipmentController::class, 'delete'])->name('shipments.delete');
+    
+    // Tracking Events for Shipment
+    Route::get('/shipments/{id}/events', [ShipmentController::class, 'events'])->name('shipments.events');
+    Route::post('/shipments/{id}/events/store', [ShipmentController::class, 'storeEvent'])->name('shipments.events.store');
+    Route::get('/shipments/{shipmentId}/events/{eventId}/delete', [ShipmentController::class, 'deleteEvent'])->name('shipments.events.delete');
 });
 
 // ============ MODERN DASHBOARD ============

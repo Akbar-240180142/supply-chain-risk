@@ -18,6 +18,7 @@ class AdminController extends Controller
             'news' => NewsCache::count(),
             'ports' => Port::count(),
             'watchlists' => Watchlist::count(),
+            'shipments' => \App\Models\Shipment::count(),
         ];
         
         return view('admin.index', compact('stats'));

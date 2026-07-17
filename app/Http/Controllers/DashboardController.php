@@ -14,6 +14,7 @@ use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
@@ -24,79 +25,84 @@ class DashboardController extends Controller
 
     public function getDashboardData()
     {
-        // 1. Auto-refresh currency if stale
-        try {
-            app(CurrencyService::class)->autoRefreshIfStale();
-        } catch (\Exception $e) {
-            Log::warning('DashboardController: Currency auto-refresh failed: ' . $e->getMessage());
-        }
-
-        // 2. Auto-refresh weather if older than 2 hours
-        $weatherStale = false;
-        try {
-            $latestWeather = DB::table('weather_cache')->latest('fetched_at')->first();
-            $weatherStale = !$latestWeather || \Carbon\Carbon::parse($latestWeather->fetched_at)->lt(now()->subHours(2));
-            if ($weatherStale) {
-                Log::info('DashboardController: Weather data is stale. Auto-refreshing...');
-                app(WeatherService::class)->fetchAndSync();
+        // Cache the dashboard data for 10 minutes to prevent slow loading
+        $data = Cache::remember('api_dashboard_data', 600, function () {
+            // 1. Auto-refresh currency if stale
+            try {
+                app(CurrencyService::class)->autoRefreshIfStale();
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: Currency auto-refresh failed: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::warning('DashboardController: Weather auto-refresh failed: ' . $e->getMessage());
-        }
 
-        // 3. Auto-refresh news if not fetched today
-        $newsSynced = false;
-        try {
-            $todayNewsCount = DB::table('news_cache')->whereDate('created_at', today())->count();
-            if ($todayNewsCount === 0) {
-                Log::info('DashboardController: No news cached today. Auto-refreshing...');
-                app(NewsService::class)->fetchAndSync();
-                $newsSynced = true;
+            // 2. Auto-refresh weather if older than 2 hours
+            $weatherStale = false;
+            try {
+                $latestWeather = DB::table('weather_cache')->latest('fetched_at')->first();
+                $weatherStale = !$latestWeather || \Carbon\Carbon::parse($latestWeather->fetched_at)->lt(now()->subHours(2));
+                if ($weatherStale) {
+                    Log::info('DashboardController: Weather data is stale. Auto-refreshing...');
+                    app(WeatherService::class)->fetchAndSync();
+                }
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: Weather auto-refresh failed: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::warning('DashboardController: News auto-refresh failed: ' . $e->getMessage());
-        }
 
-        // 4. Dynamically recalculate risk scores for today
-        try {
-            $todayRiskCount = DB::table('risk_scores')->where('record_date', today())->count();
-            $countryCount = Country::count();
-            if ($todayRiskCount < $countryCount || $weatherStale || $newsSynced) {
-                Log::info('DashboardController: Recalculating risk scores...');
-                app(RiskScoringService::class)->calculateAllCountries();
+            // 3. Auto-refresh news if not fetched today
+            $newsSynced = false;
+            try {
+                $todayNewsCount = DB::table('news_cache')->whereDate('created_at', today())->count();
+                if ($todayNewsCount === 0) {
+                    Log::info('DashboardController: No news cached today. Auto-refreshing...');
+                    app(NewsService::class)->fetchAndSync();
+                    $newsSynced = true;
+                }
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: News auto-refresh failed: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::warning('DashboardController: Risk calculation failed: ' . $e->getMessage());
-        }
 
-        $countries = Country::with(['riskScores' => function($q) {
-                $q->latest('record_date')->limit(1);
-            }, 'economicIndicators' => function($q) {
-                $q->latest('year')->limit(1);
-            }])->get();
+            // 4. Dynamically recalculate risk scores for today
+            try {
+                $todayRiskCount = DB::table('risk_scores')->where('record_date', today())->count();
+                $countryCount = Country::count();
+                if ($todayRiskCount < $countryCount || $weatherStale || $newsSynced) {
+                    Log::info('DashboardController: Recalculating risk scores...');
+                    app(RiskScoringService::class)->calculateAllCountries();
+                }
+            } catch (\Exception $e) {
+                Log::warning('DashboardController: Risk calculation failed: ' . $e->getMessage());
+            }
 
-        $countryNames = $countries->pluck('name');
-        $riskScores = $countries->map(fn($c) => $c->riskScores->first()?->total_risk_score ?? 0);
-        $inflationRates = $countries->map(fn($c) => $c->economicIndicators->first()?->inflation_rate ?? 0);
+            $countries = Country::with(['riskScores' => function($q) {
+                    $q->latest('record_date')->limit(1);
+                }, 'economicIndicators' => function($q) {
+                    $q->latest('year')->limit(1);
+                }])->get();
 
-        $mapData = $countries->map(function($c) {
-            $risk = $c->riskScores->first();
+            $countryNames = $countries->pluck('name');
+            $riskScores = $countries->map(fn($c) => $c->riskScores->first()?->total_risk_score ?? 0);
+            $inflationRates = $countries->map(fn($c) => $c->economicIndicators->first()?->inflation_rate ?? 0);
+
+            $mapData = $countries->map(function($c) {
+                $risk = $c->riskScores->first();
+                return [
+                    'name' => $c->name,
+                    'lat'  => $c->latitude,
+                    'lng'  => $c->longitude,
+                    'risk' => $risk ? $risk->total_risk_score : 0,
+                    'level'=> $risk ? $risk->risk_level : 'Low'
+                ];
+            });
+
             return [
-                'name' => $c->name,
-                'lat'  => $c->latitude,
-                'lng'  => $c->longitude,
-                'risk' => $risk ? $risk->total_risk_score : 0,
-                'level'=> $risk ? $risk->risk_level : 'Low'
+                'countries'       => $countries,
+                'chart_labels'    => $countryNames,
+                'chart_risk'      => $riskScores,
+                'chart_inflation' => $inflationRates,
+                'map_data'        => $mapData
             ];
         });
 
-        return response()->json([
-            'countries'       => $countries,
-            'chart_labels'    => $countryNames,
-            'chart_risk'      => $riskScores,
-            'chart_inflation' => $inflationRates,
-            'map_data'        => $mapData
-        ]);
+        return response()->json($data);
     }
 
     public function showCountry($id)
@@ -292,64 +298,70 @@ class DashboardController extends Controller
             // If no filters are applied, default to showing Major/Medium/Small ports or limit to 500 
             // to keep the frontend responsive and avoid browser rendering freeze
             $isFiltered = $request->has('country_id') || $request->has('status') || $request->has('search');
-            if (!$isFiltered) {
-                // Return max 500 ports prioritising bigger ones
-                $query->orderByRaw("CASE 
-                    WHEN harbor_size = 'Major' THEN 1 
-                    WHEN harbor_size = 'Medium' THEN 2 
-                    WHEN harbor_size = 'Small' THEN 3 
-                    ELSE 4 END ASC")
-                    ->limit(500);
-            }
-
-            $ports = $query->get();
-
-            // Auto-fetch from public dataset if ports are empty
-            if ($ports->isEmpty() && !$isFiltered) {
-                Log::info('DashboardController: Ports table is empty. Fetching from tayljordan/ports dataset...');
-                try {
-                    app(\App\Services\PortService::class)->fetchAndSync();
-                    $ports = DB::table('ports')
-                        ->orderByRaw("CASE 
-                            WHEN harbor_size = 'Major' THEN 1 
-                            WHEN harbor_size = 'Medium' THEN 2 
-                            WHEN harbor_size = 'Small' THEN 3 
-                            ELSE 4 END ASC")
-                        ->limit(500)
-                        ->get();
-                } catch (\Exception $ex) {
-                    Log::error('DashboardController: Lazy ports fetching failed: ' . $ex->getMessage());
-                }
-            }
             
-            $portsData = $ports->map(function($port) {
-                $portName = $port->port_name ?? $port->name ?? 'Unknown Port';
-                $portCode = $port->code;
-                if (empty($portCode)) {
-                    $words    = explode(' ', $portName);
-                    $portCode = strtoupper(substr(implode('', array_map(function($w) { return substr($w, 0, 1); }, $words)), 0, 3));
+            // Build cache key based on filters
+            $cacheKey = 'api_ports_data_' . md5(json_encode($request->all()));
+
+            $portsData = Cache::remember($cacheKey, 600, function () use ($query, $isFiltered) {
+                if (!$isFiltered) {
+                    // Return max 500 ports prioritising bigger ones
+                    $query->orderByRaw("CASE 
+                        WHEN harbor_size = 'Major' THEN 1 
+                        WHEN harbor_size = 'Medium' THEN 2 
+                        WHEN harbor_size = 'Small' THEN 3 
+                        ELSE 4 END ASC")
+                        ->limit(500);
                 }
-                $countryName = $port->country_name ?? 'Unknown';
-                $status      = 'Active';
-                if (isset($port->is_active) && !$port->is_active) {
-                    $status = 'Inactive';
-                } elseif (isset($port->status)) {
-                    $status = $port->status;
+
+                $ports = $query->get();
+
+                // Auto-fetch from public dataset if ports are empty
+                if ($ports->isEmpty() && !$isFiltered) {
+                    Log::info('DashboardController: Ports table is empty. Fetching from tayljordan/ports dataset...');
+                    try {
+                        app(\App\Services\PortService::class)->fetchAndSync();
+                        $ports = DB::table('ports')
+                            ->orderByRaw("CASE 
+                                WHEN harbor_size = 'Major' THEN 1 
+                                WHEN harbor_size = 'Medium' THEN 2 
+                                WHEN harbor_size = 'Small' THEN 3 
+                                ELSE 4 END ASC")
+                            ->limit(500)
+                            ->get();
+                    } catch (\Exception $ex) {
+                        Log::error('DashboardController: Lazy ports fetching failed: ' . $ex->getMessage());
+                    }
                 }
                 
-                return [
-                    'id'         => $port->id,
-                    'name'       => $portName,
-                    'code'       => $portCode ?? 'N/A',
-                    'country'    => $countryName,
-                    'country_id' => $port->country_id,
-                    'latitude'   => (float) $port->latitude,
-                    'longitude'  => (float) $port->longitude,
-                    'status'     => $status,
-                    'size'       => $port->harbor_size ?? 'Medium'
-                ];
+                return $ports->map(function($port) {
+                    $portName = $port->port_name ?? $port->name ?? 'Unknown Port';
+                    $portCode = $port->code;
+                    if (empty($portCode)) {
+                        $words    = explode(' ', $portName);
+                        $portCode = strtoupper(substr(implode('', array_map(function($w) { return substr($w, 0, 1); }, $words)), 0, 3));
+                    }
+                    $countryName = $port->country_name ?? 'Unknown';
+                    $status      = 'Active';
+                    if (isset($port->is_active) && !$port->is_active) {
+                        $status = 'Inactive';
+                    } elseif (isset($port->status)) {
+                        $status = $port->status;
+                    }
+                    
+                    return [
+                        'id'         => $port->id,
+                        'name'       => $portName,
+                        'code'       => $portCode ?? 'N/A',
+                        'country'    => $countryName,
+                        'country_id' => $port->country_id,
+                        'latitude'   => (float) $port->latitude,
+                        'longitude'  => (float) $port->longitude,
+                        'status'     => $status,
+                        'size'       => $port->harbor_size ?? 'Medium'
+                    ];
+                });
             });
-            
+
             return response()->json($portsData);
             
         } catch (\Exception $e) {
