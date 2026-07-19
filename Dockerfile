@@ -46,5 +46,4 @@ EXPOSE 80
 CMD cp .env.example .env && \
     chmod -R 777 storage bootstrap/cache database && \
     php artisan config:clear && \
-    php artisan key:generate --force && \
     apache2-foreground
