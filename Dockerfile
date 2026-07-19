@@ -8,13 +8,14 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     git \
-    curl
+    curl \
+    sqlite3
 
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+# Install extensions (including pdo_sqlite)
+RUN docker-php-ext-install pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd
 
 # Configure Apache DocumentRoot
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
@@ -36,18 +37,29 @@ COPY . /var/www/html
 # Install application dependencies
 RUN composer install --no-interaction --optimize-autoloader
 
-# Change ownership
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
+# Create all storage directories
+RUN mkdir -p storage/logs \
+    storage/framework/cache \
+    storage/framework/sessions \
+    storage/framework/views \
+    bootstrap/cache \
+    database
+
+# Fix permissions fully (777 so laravel can write logs, sessions, etc.)
+RUN chmod -R 777 storage bootstrap/cache database
+RUN chown -R www-data:www-data /var/www/html
 
 # Create SQLite database file
-RUN touch database/database.sqlite && chown www-data:www-data database/database.sqlite
+RUN touch database/database.sqlite && chmod 777 database/database.sqlite
 
 EXPOSE 80
 
-# Auto-setup for Render (Create .env, Generate Key, Migrate, Seed, Start Server)
+# Auto-setup for Render: create .env, switch to sqlite, generate key, migrate, seed, start server
 CMD cp .env.example .env && \
     sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/g' .env && \
-    php artisan key:generate && \
+    sed -i 's|# DB_DATABASE=.*|DB_DATABASE=/var/www/html/database/database.sqlite|g' .env && \
+    echo "DB_DATABASE=/var/www/html/database/database.sqlite" >> .env && \
+    php artisan config:clear && \
+    php artisan key:generate --force && \
     php artisan migrate:fresh --seed --force && \
-    chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database && \
     apache2-foreground
