@@ -42,10 +42,9 @@ RUN touch database/database.sqlite && chmod 777 database/database.sqlite
 
 EXPOSE 80
 
-# Startup: copy .env, generate key, migrate+seed, start Apache
+# Startup: copy .env, generate key, start Apache
 CMD cp .env.example .env && \
     chmod -R 777 storage bootstrap/cache database && \
     php artisan config:clear && \
     php artisan key:generate --force && \
-    php artisan migrate:fresh --seed --force && \
     apache2-foreground
