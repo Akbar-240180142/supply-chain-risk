@@ -20,6 +20,21 @@ Route::get('/country/{id}', [DashboardController::class, 'showCountry'])->name('
 Route::get('/comparison', [DashboardController::class, 'comparison'])->name('comparison');
 Route::post('/api/compare', [DashboardController::class, 'compareCountries'])->name('api.compare');
 
+// Test DB route
+Route::get('/test-db', function () {
+    try {
+        return response()->json([
+            'database_path' => env('DB_DATABASE'),
+            'file_exists' => file_exists(env('DB_DATABASE')),
+            'file_size' => file_exists(env('DB_DATABASE')) ? filesize(env('DB_DATABASE')) : 0,
+            'country_count' => \App\Models\Country::count(),
+            'port_count' => \App\Models\Port::count(),
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()]);
+    }
+});
+
 // ============ PORTS ============
 Route::get('/ports', [DashboardController::class, 'ports'])->name('ports');
 Route::get('/api/ports', [DashboardController::class, 'getPortsData'])->name('api.ports');
