@@ -22,11 +22,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Copy project files
+# Copy project files and pre-installed vendor
 COPY . /var/www/html
-
-# Install composer dependencies with unlimited memory
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --no-dev --optimize-autoloader
 
 # Create all required directories for Laravel
 RUN mkdir -p storage/logs \
