@@ -1,64 +1,53 @@
 FROM php:8.2-apache
 
-# Install dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
-    zip \
-    unzip \
-    git \
-    curl \
-    sqlite3
+    zip unzip git curl sqlite3 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install extensions (including pdo_sqlite)
+# Install PHP extensions including pdo_sqlite
 RUN docker-php-ext-install pdo_mysql pdo_sqlite mbstring exif pcntl bcmath gd
 
-# Configure Apache DocumentRoot
+# Configure Apache DocumentRoot to Laravel's public/
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf && \
+    sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf && \
+    a2enmod rewrite
 
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
-
-# Get latest Composer
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /var/www/html
 
-# Copy existing application directory
+# Copy project files
 COPY . /var/www/html
 
-# Install application dependencies
-RUN composer install --no-interaction --optimize-autoloader
+# Install composer dependencies with unlimited memory
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --no-dev --optimize-autoloader
 
-# Create all storage directories
+# Create all required directories for Laravel
 RUN mkdir -p storage/logs \
-    storage/framework/cache \
-    storage/framework/sessions \
-    storage/framework/views \
-    bootstrap/cache \
-    database
+             storage/framework/cache/data \
+             storage/framework/sessions \
+             storage/framework/views \
+             bootstrap/cache \
+             database
 
-# Fix permissions fully (777 so laravel can write logs, sessions, etc.)
-RUN chmod -R 777 storage bootstrap/cache database
-RUN chown -R www-data:www-data /var/www/html
+# Set writable permissions
+RUN chmod -R 777 storage bootstrap/cache database && \
+    chown -R www-data:www-data /var/www/html
 
-# Create SQLite database file
+# Pre-create SQLite file with write access
 RUN touch database/database.sqlite && chmod 777 database/database.sqlite
 
 EXPOSE 80
 
-# Auto-setup for Render: create .env, switch to sqlite, generate key, migrate, seed, start server
+# Startup: copy .env, generate key, migrate+seed, start Apache
 CMD cp .env.example .env && \
-    sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/g' .env && \
-    sed -i 's|# DB_DATABASE=.*|DB_DATABASE=/var/www/html/database/database.sqlite|g' .env && \
-    echo "DB_DATABASE=/var/www/html/database/database.sqlite" >> .env && \
+    chmod -R 777 storage bootstrap/cache database && \
     php artisan config:clear && \
     php artisan key:generate --force && \
     php artisan migrate:fresh --seed --force && \
