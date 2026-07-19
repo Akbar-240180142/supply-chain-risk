@@ -150,13 +150,13 @@
 
                         <!-- Skor Risiko Total -->
                         @if($country->riskScores->count() > 0)
-                            @php $risk = $country->riskScores->sortByDesc('calculated_at')->first(); @endphp
+                            @php $risk = $country->riskScores->sortByDesc('record_date')->first(); @endphp
                             <h6 class="fw-bold mt-4 border-bottom pb-2"><i class="bi bi-graph-up-arrow"></i> Skor Risiko Total ({{ $country->name }})</h6>
                             <div class="progress mb-2" style="height: 20px;">
-                                <div class="progress-bar {{ $risk->total_score > 60 ? 'bg-danger' : ($risk->total_score > 30 ? 'bg-warning' : 'bg-success') }}" 
-                                     role="progressbar" style="width: {{ $risk->total_score }}%;" 
-                                     aria-valuenow="{{ $risk->total_score }}" aria-valuemin="0" aria-valuemax="100">
-                                    {{ $risk->total_score }}/100
+                                <div class="progress-bar {{ $risk->total_risk_score > 60 ? 'bg-danger' : ($risk->total_risk_score > 30 ? 'bg-warning' : 'bg-success') }}" 
+                                     role="progressbar" style="width: {{ $risk->total_risk_score }}%;" 
+                                     aria-valuenow="{{ $risk->total_risk_score }}" aria-valuemin="0" aria-valuemax="100">
+                                    {{ $risk->total_risk_score }}/100
                                 </div>
                             </div>
                             <small class="text-muted">Semakin tinggi skor, semakin tinggi kemungkinan paket tertunda (delay).</small>
