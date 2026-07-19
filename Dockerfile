@@ -49,4 +49,5 @@ CMD cp .env.example .env && \
     sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/g' .env && \
     php artisan key:generate && \
     php artisan migrate:fresh --seed --force && \
+    chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database && \
     apache2-foreground
