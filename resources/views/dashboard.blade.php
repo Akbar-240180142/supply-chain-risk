@@ -481,8 +481,11 @@
             <div class="card-modern animate-fadeInUp animate-delay-4">
                 <div class="card-header-modern">
                     <h5 class="card-title-modern">
-                        <span>📊</span> Weather Details by Country
+                        <span>📊</span> Weather Details
                     </h5>
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#weatherModal">
+                        See All Details
+                    </button>
                 </div>
                 <div class="card-body-modern">
                     <div class="table-responsive">
@@ -586,6 +589,37 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Weather Modal -->
+<div class="modal fade" id="weatherModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><span>📊</span> Full Weather Details by Country</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table-modern" id="weatherModalTable">
+                        <thead style="position: sticky; top: 0; z-index: 10; background: var(--gray-50);">
+                            <tr>
+                                <th>Country</th>
+                                <th>Temperature</th>
+                                <th>Condition</th>
+                                <th>Rainfall</th>
+                                <th>Wind Speed</th>
+                                <th>Risk Level</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="text-center text-muted">Loading weather data...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -907,24 +941,46 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateWeatherTable(weatherData) {
+        // Sort by extreme weather conditions (rain or wind)
+        weatherData.sort((a, b) => (b.precipitation + b.windSpeed) - (a.precipitation + a.windSpeed));
+
+        // 1. Populate Main Table (Top 5)
         const tbody = document.querySelector('#weatherTable tbody');
         tbody.innerHTML = '';
+        const top5 = weatherData.slice(0, 5);
         
-        weatherData.forEach(country => {
+        top5.forEach(country => {
             const weatherInfo = getWeatherInfo(country.weatherCode);
-            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td><strong>${country.name}</strong></td>
                 <td>${Math.round(country.temperature)}°C</td>
                 <td>${weatherInfo.icon} ${weatherInfo.condition}</td>
-                <td>${country.precipitation} mm (Daily: ${country.dailyRain.toFixed(1)} mm)</td>
+                <td>${country.precipitation} mm</td>
                 <td>${country.windSpeed} km/h</td>
                 <td><span class="badge-modern badge-${weatherInfo.color === 'success' ? 'success' : (weatherInfo.color === 'warning' ? 'warning' : (weatherInfo.color === 'danger' ? 'danger' : 'info'))}-modern">${weatherInfo.risk} Risk</span></td>
             `;
-            
             tbody.appendChild(row);
         });
+
+        // 2. Populate Modal Table (All Countries)
+        const modalTbody = document.querySelector('#weatherModalTable tbody');
+        if(modalTbody) {
+            modalTbody.innerHTML = '';
+            weatherData.forEach(country => {
+                const weatherInfo = getWeatherInfo(country.weatherCode);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${country.name}</strong></td>
+                    <td>${Math.round(country.temperature)}°C</td>
+                    <td>${weatherInfo.icon} ${weatherInfo.condition}</td>
+                    <td>${country.precipitation} mm (Daily: ${country.dailyRain.toFixed(1)} mm)</td>
+                    <td>${country.windSpeed} km/h</td>
+                    <td><span class="badge-modern badge-${weatherInfo.color === 'success' ? 'success' : (weatherInfo.color === 'warning' ? 'warning' : (weatherInfo.color === 'danger' ? 'danger' : 'info'))}-modern">${weatherInfo.risk} Risk</span></td>
+                `;
+                modalTbody.appendChild(row);
+            });
+        }
     }
 
     // Fungsi Update Tabel

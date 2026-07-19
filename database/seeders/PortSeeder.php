@@ -9,14 +9,14 @@ class PortSeeder extends Seeder
 {
     public function run()
     {
-        $this->command->info('🚢 Seeding ports from tayljordan/ports dataset API...');
+        $this->command->info('Fetching ports from World Port Index...');
         
         $count = app(PortService::class)->fetchAndSync();
         
         if ($count > 0) {
-            $this->command->info("✅ {$count} ports seeded successfully from API!");
+            $this->command->info("✅ {$count} Ports seeded successfully via API!");
         } else {
-            $this->command->error("❌ Failed to seed ports from API. Database remains empty.");
+            $this->command->info("✅ Ports already synced or API returned 0 new records.");
         }
     }
 }

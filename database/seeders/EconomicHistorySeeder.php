@@ -87,12 +87,15 @@ class EconomicHistorySeeder extends Seeder
             if (isset($economicData[$country->name])) {
                 // Data historis 2019-2024
                 foreach ($economicData[$country->name] as $year => $data) {
+                    $gdp = $data['gdp'];
                     EconomicIndicator::updateOrCreate(
                         ['country_id' => $country->id, 'year' => $year],
                         [
-                            'gdp' => $data['gdp'], 
+                            'gdp' => $gdp, 
                             'inflation_rate' => $data['inflation'],
-                            'population' => $data['population']
+                            'population' => $data['population'],
+                            'exports' => $gdp * (rand(15, 25) / 100),
+                            'imports' => $gdp * (rand(15, 25) / 100),
                         ]
                     );
                     $count++;
@@ -101,12 +104,15 @@ class EconomicHistorySeeder extends Seeder
                 // Data forecast 2025-2026
                 if (isset($forecastData[$country->name])) {
                     foreach ($forecastData[$country->name] as $year => $data) {
+                        $gdp = $data['gdp'];
                         EconomicIndicator::updateOrCreate(
                             ['country_id' => $country->id, 'year' => $year],
                             [
-                                'gdp' => $data['gdp'], 
+                                'gdp' => $gdp, 
                                 'inflation_rate' => $data['inflation'],
-                                'population' => $data['population']
+                                'population' => $data['population'],
+                                'exports' => $gdp * (rand(15, 25) / 100),
+                                'imports' => $gdp * (rand(15, 25) / 100),
                             ]
                         );
                         $count++;
@@ -118,12 +124,15 @@ class EconomicHistorySeeder extends Seeder
                 $basePopulation = rand(5000000, 500000000);
                 
                 for ($year = 2019; $year <= 2026; $year++) {
+                    $gdp = $baseGdp * (1 + ($year - 2019) * 0.03);
                     EconomicIndicator::updateOrCreate(
                         ['country_id' => $country->id, 'year' => $year],
                         [
-                            'gdp' => $baseGdp * (1 + ($year - 2019) * 0.03),
+                            'gdp' => $gdp,
                             'inflation_rate' => rand(100, 800) / 100,
-                            'population' => intval($basePopulation * (1 + ($year - 2019) * 0.01))
+                            'population' => intval($basePopulation * (1 + ($year - 2019) * 0.01)),
+                            'exports' => $gdp * (rand(15, 30) / 100),
+                            'imports' => $gdp * (rand(15, 30) / 100),
                         ]
                     );
                     $count++;

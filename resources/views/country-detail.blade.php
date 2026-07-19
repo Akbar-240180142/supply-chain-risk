@@ -62,7 +62,7 @@
             <div class="card p-4">
                 <h5 class="card-title mb-3">📰 Latest News Intelligence</h5>
                 @if($country->news->count() > 0)
-                    <div class="list-group list-group-flush">
+                    <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
                         @foreach($country->news as $news)
                             <div class="list-group-item px-0">
                                 <div class="d-flex justify-content-between align-items-start">
@@ -151,26 +151,32 @@
             <div class="card p-4">
                 <h5 class="card-title mb-3">💰 Economic Indicators</h5>
                 @if($country->economicIndicators->count() > 0)
-                    <table class="table table-sm mb-0">
-                       <thead>
-    <tr>
-        <th>Year</th>
-        <th>GDP</th>
-        <th>Inflation</th>
-        <th>Population</th>
-    </tr>
-</thead>
-<tbody>
-    @foreach($country->economicIndicators as $econ)
+                    <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                        <table class="table table-sm mb-0 table-hover">
+                           <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
         <tr>
-            <td>{{ $econ->year }}</td>
-            <td>${{ number_format($econ->gdp / 1000000000, 1) }}B</td>
-            <td>{{ $econ->inflation_rate }}%</td>
-            <td>{{ number_format($econ->population ?? 0) }}</td>
+            <th>Year</th>
+            <th>GDP</th>
+            <th>Inflation</th>
+            <th>Pop.</th>
+            <th>Export</th>
+            <th>Import</th>
         </tr>
-    @endforeach
-</tbody>
-                    </table>
+    </thead>
+    <tbody>
+        @foreach($country->economicIndicators as $econ)
+            <tr>
+                <td>{{ $econ->year }}</td>
+                <td>${{ number_format($econ->gdp / 1000000000, 1) }}B</td>
+                <td>{{ $econ->inflation_rate }}%</td>
+                <td>{{ number_format($econ->population / 1000000, 1) }}M</td>
+                <td>{{ $econ->exports ? '$'.number_format($econ->exports / 1000000000, 1).'B' : '-' }}</td>
+                <td>{{ $econ->imports ? '$'.number_format($econ->imports / 1000000000, 1).'B' : '-' }}</td>
+            </tr>
+        @endforeach
+    </tbody>
+                        </table>
+                    </div>
                 @else
                     <p class="text-muted">No economic data available.</p>
                 @endif

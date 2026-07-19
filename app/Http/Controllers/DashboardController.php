@@ -27,44 +27,44 @@ class DashboardController extends Controller
     {
         // Cache the dashboard data for 10 minutes to prevent slow loading
         $data = Cache::remember('api_dashboard_data', 600, function () {
-            // 1. Auto-refresh currency if stale
+            // Auto-refresh ONLY when DB is completely empty (first-time setup)
+            // For regular updates, use: php artisan app:sync-data
+
+            // 1. Auto-refresh currency if no data at all
             try {
-                app(CurrencyService::class)->autoRefreshIfStale();
+                if (DB::table('currency_rates')->count() === 0) {
+                    Log::info('DashboardController: No currency data. Fetching...');
+                    app(CurrencyService::class)->fetchAndSync();
+                }
             } catch (\Exception $e) {
                 Log::warning('DashboardController: Currency auto-refresh failed: ' . $e->getMessage());
             }
 
-            // 2. Auto-refresh weather if older than 2 hours
-            $weatherStale = false;
+            // 2. Auto-refresh weather if no data at all
             try {
-                $latestWeather = DB::table('weather_cache')->latest('fetched_at')->first();
-                $weatherStale = !$latestWeather || \Carbon\Carbon::parse($latestWeather->fetched_at)->lt(now()->subHours(2));
-                if ($weatherStale) {
-                    Log::info('DashboardController: Weather data is stale. Auto-refreshing...');
+                if (DB::table('weather_cache')->count() === 0) {
+                    Log::info('DashboardController: No weather data. Fetching...');
                     app(WeatherService::class)->fetchAndSync();
                 }
             } catch (\Exception $e) {
                 Log::warning('DashboardController: Weather auto-refresh failed: ' . $e->getMessage());
             }
 
-            // 3. Auto-refresh news if not fetched today
-            $newsSynced = false;
+            // 3. Auto-refresh economic data if no data at all
             try {
-                $todayNewsCount = DB::table('news_cache')->whereDate('created_at', today())->count();
-                if ($todayNewsCount === 0) {
-                    Log::info('DashboardController: No news cached today. Auto-refreshing...');
-                    app(NewsService::class)->fetchAndSync();
-                    $newsSynced = true;
+                if (DB::table('economic_indicators')->count() === 0) {
+                    Log::info('DashboardController: No economic data. Fetching...');
+                    app(EconomicService::class)->fetchAndSync();
                 }
             } catch (\Exception $e) {
-                Log::warning('DashboardController: News auto-refresh failed: ' . $e->getMessage());
+                Log::warning('DashboardController: Economic auto-refresh failed: ' . $e->getMessage());
             }
 
-            // 4. Dynamically recalculate risk scores for today
+            // 4. Recalculate risk scores if missing for today
             try {
                 $todayRiskCount = DB::table('risk_scores')->where('record_date', today())->count();
                 $countryCount = Country::count();
-                if ($todayRiskCount < $countryCount || $weatherStale || $newsSynced) {
+                if ($todayRiskCount < $countryCount) {
                     Log::info('DashboardController: Recalculating risk scores...');
                     app(RiskScoringService::class)->calculateAllCountries();
                 }
@@ -109,41 +109,28 @@ class DashboardController extends Controller
     {
         $country = Country::findOrFail($id);
 
-        // 1. Fetch economic indicators on-demand if missing
+        // Fetch on-demand ONLY if data is completely missing for this country
+        // 1. Economic indicators
         $econCount = DB::table('economic_indicators')->where('country_id', $country->id)->count();
         if ($econCount === 0) {
             try {
                 app(EconomicService::class)->fetchForCountry($country);
             } catch (\Exception $e) {
-                Log::warning("DashboardController: Dynamic economic fetch failed for {$country->name}: " . $e->getMessage());
+                Log::warning("DashboardController: Economic fetch failed for {$country->name}: " . $e->getMessage());
             }
         }
 
-        // 2. Fetch weather on-demand if stale (older than 2 hours)
-        try {
-            $weather = DB::table('weather_cache')->where('country_id', $country->id)->first();
-            $weatherStale = !$weather || \Carbon\Carbon::parse($weather->fetched_at)->lt(now()->subHours(2));
-            if ($weatherStale) {
+        // 2. Weather data
+        $weatherExists = DB::table('weather_cache')->where('country_id', $country->id)->exists();
+        if (!$weatherExists) {
+            try {
                 app(WeatherService::class)->fetchForCountry($country);
+            } catch (\Exception $e) {
+                Log::warning("DashboardController: Weather fetch failed for {$country->name}: " . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            Log::warning("DashboardController: Dynamic weather fetch failed for {$country->name}: " . $e->getMessage());
         }
 
-        // 3. Fetch country news on-demand if stale (older than 6 hours)
-        try {
-            $hasRecentNews = DB::table('news_cache')
-                ->where('country_id', $country->id)
-                ->where('created_at', '>=', now()->subHours(6))
-                ->exists();
-            if (!$hasRecentNews) {
-                app(NewsService::class)->fetchForCountry($country);
-            }
-        } catch (\Exception $e) {
-            Log::warning("DashboardController: Dynamic news fetch failed for {$country->name}: " . $e->getMessage());
-        }
-
-        // 4. Recalculate risk score for this country specifically
+        // 3. Recalculate risk score (fast, reads from DB only)
         try {
             app(RiskScoringService::class)->calculateRiskForCountry($country->id);
         } catch (\Exception $e) {

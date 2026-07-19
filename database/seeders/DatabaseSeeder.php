@@ -13,7 +13,10 @@ class DatabaseSeeder extends Seeder
             CountrySeeder::class,
             PortSeeder::class,
             UserSeeder::class,
-            RiskScoreSeeder::class,
+            EconomicHistorySeeder::class,
+            ExchangeRateSeeder::class,
+            HistoricalRiskSeeder::class,
+            RealNewsSeeder::class,
             ShipmentSeeder::class,
         ]);
     }

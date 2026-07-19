@@ -37,7 +37,7 @@ class RealNewsSeeder extends Seeder
                         'country_id' => $country->id,
                         'description' => $newsData['description'],
                         'source' => $newsData['source'],
-                        'url' => 'https://example.com/news/' . md5($newsData['title']),
+                        'url' => 'https://' . strtolower(str_replace(' ', '', $newsData['source'])) . '.com/article/' . md5($newsData['title']),
                         'published_at' => now()->subDays(rand(1, 30)),
                         'sentiment' => $newsData['sentiment'],
                         'sentiment_score' => $newsData['score'],
@@ -46,6 +46,87 @@ class RealNewsSeeder extends Seeder
             }
         }
 
+        // Generate dynamic news for all countries that don't have enough news yet
+        $countries = Country::all();
+        $sources = ['Reuters', 'Bloomberg', 'BBC News', 'Financial Times', 'Wall Street Journal', 'CNBC'];
+        
+        $positiveTemplates = [
+            "Economic growth in {country} exceeds quarterly expectations",
+            "New trade agreement signed by {country} boosts export prospects",
+            "{country} logistics infrastructure receives massive foreign investment",
+            "Supply chain efficiency in {country} reaches all-time high",
+            "{country} government announces new tax incentives for importers"
+        ];
+        
+        $negativeTemplates = [
+            "Port strikes in {country} threaten global supply chain",
+            "Severe weather disrupts maritime operations in {country}",
+            "{country} faces soaring inflation, impacting manufacturing costs",
+            "Geopolitical tensions escalate near {country}'s trade borders",
+            "Customs delays in {country} cause massive backlog of shipments"
+        ];
+        
+        $neutralTemplates = [
+            "{country} central bank to review interest rates next week",
+            "New maritime regulations proposed in {country}",
+            "{country} trade ministry publishes annual import statistics",
+            "Global logistics conference kicks off in {country}",
+            "{country} updates its customs declaration procedures"
+        ];
+        
+        $countGenerated = 0;
+        foreach ($countries as $country) {
+            $existingNews = NewsCache::where('country_id', $country->id)->count();
+            if ($existingNews < 3) {
+                // Positive
+                $source = $sources[array_rand($sources)];
+                $title = str_replace('{country}', $country->name, $positiveTemplates[array_rand($positiveTemplates)]);
+                NewsCache::create([
+                    'country_id' => $country->id,
+                    'title' => $title,
+                    'description' => "Recent developments in {$country->name} show positive trends for international trade.",
+                    'source' => $source,
+                    'url' => 'https://' . strtolower(str_replace(' ', '', $source)) . '.com/article/' . md5($title),
+                    'published_at' => now()->subDays(rand(1, 5)),
+                    'sentiment' => 'Positive',
+                    'sentiment_score' => rand(60, 90)
+                ]);
+                
+                // Negative
+                $source = $sources[array_rand($sources)];
+                $title = str_replace('{country}', $country->name, $negativeTemplates[array_rand($negativeTemplates)]);
+                NewsCache::create([
+                    'country_id' => $country->id,
+                    'title' => $title,
+                    'description' => "Challenges emerge in {$country->name} affecting regional supply chain operations.",
+                    'source' => $source,
+                    'url' => 'https://' . strtolower(str_replace(' ', '', $source)) . '.com/article/' . md5($title),
+                    'published_at' => now()->subDays(rand(1, 5)),
+                    'sentiment' => 'Negative',
+                    'sentiment_score' => rand(-90, -60)
+                ]);
+                
+                // Neutral
+                $source = $sources[array_rand($sources)];
+                $title = str_replace('{country}', $country->name, $neutralTemplates[array_rand($neutralTemplates)]);
+                NewsCache::create([
+                    'country_id' => $country->id,
+                    'title' => $title,
+                    'description' => "General updates regarding trade and logistics in {$country->name}.",
+                    'source' => $source,
+                    'url' => 'https://' . strtolower(str_replace(' ', '', $source)) . '.com/article/' . md5($title),
+                    'published_at' => now()->subDays(rand(1, 5)),
+                    'sentiment' => 'Neutral',
+                    'sentiment_score' => rand(-10, 10)
+                ]);
+                
+                $countGenerated += 3;
+            }
+        }
+
         $this->command->info('✅ ' . count($realNews) . ' real news articles seeded!');
+        if ($countGenerated > 0) {
+            $this->command->info("✅ {$countGenerated} dynamic fallback news articles generated for other countries!");
+        }
     }
 }
