@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
-    zip unzip git curl sqlite3 \
+    zip unzip git curl sqlite3 libsqlite3-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions including pdo_sqlite
