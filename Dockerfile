@@ -33,8 +33,20 @@ WORKDIR /var/www/html
 # Copy existing application directory
 COPY . /var/www/html
 
+# Install application dependencies
+RUN composer install --no-interaction --optimize-autoloader
+
 # Change ownership
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
+
+# Create SQLite database file
+RUN touch database/database.sqlite && chown www-data:www-data database/database.sqlite
 
 EXPOSE 80
-CMD ["apache2-foreground"]
+
+# Auto-setup for Render (Create .env, Generate Key, Migrate, Seed, Start Server)
+CMD cp .env.example .env && \
+    sed -i 's/DB_CONNECTION=mysql/DB_CONNECTION=sqlite/g' .env && \
+    php artisan key:generate && \
+    php artisan migrate:fresh --seed --force && \
+    apache2-foreground
