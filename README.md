@@ -184,10 +184,10 @@ Total Risk = (Weather × 30%) + (Inflation × 20%) + (News × 40%) + (Currency �
 
 ## 👨‍💻 Developer
 
-**[Nama Kamu]**  
+**[Muhammad Akbar Maulana]**  
 Information Systems Student  
-📧 Email: your.email@example.com  
-🔗 LinkedIn: [linkedin.com/in/yourprofile](https://linkedin.com)
+📧 Email: Muhammadakbarmaulana@gmail.com  
+🔗 LinkedIn:
 
 ## 📄 License
 
