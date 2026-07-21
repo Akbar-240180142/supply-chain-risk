@@ -117,7 +117,11 @@ Route::post('/api/news/sync', function() {
 
 // ============ WATCHLIST ============
 Route::get('/watchlist', function() {
-    $userId = auth()->id() ?: 1;
+    if (!auth()->check()) {
+        return redirect()->route('login')->with('error', 'Silakan login untuk menyimpan dan melihat Watchlist Anda secara permanen.');
+    }
+    
+    $userId = auth()->id();
     $watchlist = \App\Models\Watchlist::where('user_id', $userId)
         ->with(['country' => function($q) {
             $q->with(['riskScores' => function($q2) {
@@ -129,7 +133,9 @@ Route::get('/watchlist', function() {
 })->name('watchlist');
 
 Route::delete('/watchlist/{countryId}', function($countryId) {
-    $userId = auth()->id() ?: 1;
+    if (!auth()->check()) return redirect()->route('dashboard');
+    
+    $userId = auth()->id();
     \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
         ->delete();
@@ -137,7 +143,9 @@ Route::delete('/watchlist/{countryId}', function($countryId) {
 })->name('watchlist.remove');
 
 Route::get('/api/watchlist', function() {
-    $userId = auth()->id() ?: 1;
+    if (!auth()->check()) return response()->json([]);
+    
+    $userId = auth()->id();
     return \App\Models\Watchlist::where('user_id', $userId)
         ->with(['country' => function($q) {
             $q->with(['riskScores' => function($q2) {
@@ -148,7 +156,11 @@ Route::get('/api/watchlist', function() {
 });
 
 Route::post('/api/watchlist/toggle', function() {
-    $userId = auth()->id() ?: 1;
+    if (!auth()->check()) {
+        return response()->json(['status' => 'guest_toggled']);
+    }
+    
+    $userId = auth()->id();
     $countryId = request()->input('country_id');
     $existing = \App\Models\Watchlist::where('user_id', $userId)
         ->where('country_id', $countryId)
@@ -181,6 +193,8 @@ Route::prefix('api')->group(function () {
 // ============ AUTHENTICATION ============
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
+Route::post('/register', [AuthController::class, 'register'])->name('register.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // ============ ADMIN DASHBOARD ROUTES ============

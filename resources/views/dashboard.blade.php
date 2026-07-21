@@ -402,6 +402,19 @@
             <a href="/watchlist" class="nav-link-modern nav-link-warning">
                 <span>⭐</span> My Watchlist
             </a>
+            
+            <div class="d-flex align-items-center ms-3 ps-3 border-start border-secondary">
+                @auth
+                    <span class="text-light me-3">👤 {{ auth()->user()->name }}</span>
+                    <form action="{{ route('logout') }}" method="POST" class="m-0">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-outline-light" style="border-radius: var(--radius-md);">Logout</button>
+                    </form>
+                @else
+                    <a href="{{ route('login') }}" class="nav-link-modern">Login</a>
+                    <a href="{{ route('register') }}" class="btn btn-sm btn-primary ms-2" style="border-radius: var(--radius-md);">Register</a>
+                @endauth
+            </div>
         </div>
     </div>
 </nav>
@@ -1034,12 +1047,26 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'added') {
+            if (data.status === 'added' || data.status === 'guest_toggled') {
+                if (data.status === 'guest_toggled' && watchlistIds.includes(countryId)) {
+                    // Guest remove fallback
+                    watchlistIds = watchlistIds.filter(id => id !== countryId);
+                    button.classList.remove('active');
+                    button.innerHTML = '☆';
+                    document.getElementById('watchlistCount').textContent = watchlistIds.length;
+                    return;
+                }
+                
                 watchlistIds.push(countryId);
                 button.classList.remove('btn-outline-warning');
                 button.classList.add('active');
                 button.innerHTML = '⭐';
                 document.getElementById('watchlistCount').textContent = watchlistIds.length;
+                
+                if (data.status === 'guest_toggled') {
+                    // Optional: Show a small toast/alert for guest users
+                    console.log('Added to temporary guest watchlist (will reset on refresh)');
+                }
             } else if (data.status === 'removed') {
                 watchlistIds = watchlistIds.filter(id => id !== countryId);
                 button.classList.remove('active');
